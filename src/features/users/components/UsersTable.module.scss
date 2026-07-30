@@ -1,0 +1,20 @@
+// Feature-prefixed BEM. Colours come from the theme's CSS custom properties —
+// never a literal hex value.
+.usersTable {
+  &__row {
+    transition: opacity 150ms ease-in-out;
+
+    &--suspended {
+      opacity: 0.6;
+
+      &:hover,
+      &:focus-within {
+        opacity: 1;
+      }
+
+      td:first-child {
+        box-shadow: inset 2px 0 0 0 var(--destructive);
+      }
+    }
+  }
+}
