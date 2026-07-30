@@ -1,0 +1,251 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* ELogbook brand tokens — the part of the NYX palette that shadcn's set has
+     no slot for. See the palette block below for provenance. */
+  --color-brand-dark: var(--brand-dark);
+  --color-brand-surface: var(--brand-surface);
+  --color-brand-subtle: var(--brand-subtle);
+  --color-brand-track: var(--brand-track);
+  --color-on-brand: var(--on-brand);
+  --color-on-brand-muted: var(--on-brand-muted);
+  --color-auth-surface: var(--auth-surface);
+  --color-border-subtle: var(--border-subtle);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* ---------------------------------------------------------------------------
+   ELogbook palette — the NYX prototype's `C` object, prototype source line 2,
+   mapped onto shadcn's token slots.
+
+   The development standard marks DS-9.3 (the colour palette) as a
+   PRODUCT-SPECIFIC item whose value must never be invented against, and names
+   the prototype as where ELogbook's colours come from. This block is that
+   transcription — every hex below is quoted from the prototype, with one
+   ratified exception noted on `--primary`.
+
+   Values are oklch because the file already was; each carries its prototype hex
+   so a reader can diff this against the prototype source without a converter.
+
+   Two rules this palette imposes, both measured rather than assumed:
+   - Teal *text* on a tinted surface uses `--brand-dark` (#0A625B), not
+     `--primary`. #0D857B on `--background` is 3.99:1 — fine as a focus ring
+     (3:1) but short of AA for text. #0A625B measures 6.38:1 there. The
+     prototype makes the same distinction: its active nav label is `tealDk`.
+   - `--primary` is a fill, or text on `--card` (white, 4.51:1).
+--------------------------------------------------------------------------- */
+:root {
+  --background: oklch(0.9571 0.0055 183.03); /* #EDF2F1  C.bg */
+  --foreground: oklch(0.2869 0.0331 182.84); /* #16302C  C.tx */
+  --card: oklch(1 0 0); /* #FFFFFF  C.card */
+  --card-foreground: oklch(0.2869 0.0331 182.84); /* #16302C  C.tx */
+  --popover: oklch(1 0 0); /* #FFFFFF */
+  --popover-foreground: oklch(0.2869 0.0331 182.84); /* #16302C */
+
+  /* RATIFIED DIVERGENCE from the prototype, owner decision 2026-07-30: the
+     prototype's #0E8C81 under white text measures 4.128:1, below the 4.5:1 AA
+     minimum the testing standard marks [ENFORCED], and it is
+     the login CTA's background. #0D857B is the nearest teal that clears the
+     bar (4.51:1) — 2.5 L* darker, which is under the just-noticeable
+     difference for non-adjacent patches. Every other hex here is verbatim. */
+  --primary: oklch(0.5559 0.0953 185.47); /* #0D857B  C.teal, AA-adjusted */
+  --primary-foreground: oklch(1 0 0); /* #FFFFFF */
+
+  --secondary: oklch(0.9623 0.0065 185.27); /* #EEF4F3  C.th */
+  --secondary-foreground: oklch(0.2869 0.0331 182.84); /* #16302C  C.tx */
+  --muted: oklch(0.9623 0.0065 185.27); /* #EEF4F3  C.th */
+  --muted-foreground: oklch(0.5345 0.0245 181.88); /* #5E726E  C.mut */
+  --accent: oklch(0.9476 0.0143 180.7); /* #E4F1EE  C.active */
+  --accent-foreground: oklch(0.4479 0.0757 186.15); /* #0A625B  C.tealDk */
+
+  --destructive: oklch(0.5433 0.174 29.7); /* #C0392B  PRICOL.Critical */
+  --border: oklch(0.8914 0.0125 177.98); /* #D3DEDB  C.bd */
+  --input: oklch(0.8692 0.0136 179.41); /* #CBD7D4  login field border */
+  /* The brand teal doubles as the focus ring: 3.99:1 on --background and
+     4.51:1 on --card, both clearing WCAG 1.4.11's 3:1 for a non-text
+     indicator. */
+  --ring: oklch(0.5559 0.0953 185.47); /* #0D857B */
+
+  /* Charts: the teal family plus the prototype's priority scale (`PRICOL`,
+     app-source.txt line 34), so a severity series and a brand series can share
+     one ramp. No chart library is installed and none may be added. */
+  --chart-1: oklch(0.5559 0.0953 185.47); /* #0D857B  teal */
+  --chart-2: oklch(0.6127 0.1048 184.87); /* #13988C  C.tealLt */
+  --chart-3: oklch(0.6658 0.1574 58.32); /* #D97706  PRICOL.High */
+  --chart-4: oklch(0.5234 0.1347 144.17); /* #2E7D32  PRICOL.Low */
+  --chart-5: oklch(0.5433 0.174 29.7); /* #C0392B  PRICOL.Critical */
+
+  --radius: 0.625rem;
+
+  /* The prototype's sidebar is a white panel with a teal-tinted active row
+     (app-source.txt 213–222). */
+  --sidebar: oklch(1 0 0); /* #FFFFFF */
+  --sidebar-foreground: oklch(0.2869 0.0331 182.84); /* #16302C  C.tx */
+  --sidebar-primary: oklch(0.5559 0.0953 185.47); /* #0D857B */
+  --sidebar-primary-foreground: oklch(1 0 0); /* #FFFFFF */
+  --sidebar-accent: oklch(0.9476 0.0143 180.7); /* #E4F1EE  C.active */
+  --sidebar-accent-foreground: oklch(0.4479 0.0757 186.15); /* #0A625B */
+  --sidebar-border: oklch(0.8914 0.0125 177.98); /* #D3DEDB  C.bd */
+  --sidebar-ring: oklch(0.5559 0.0953 185.47); /* #0D857B */
+
+  /* --- Brand tokens: prototype colours shadcn has no slot for -------------- */
+  /* The teal of a *brand surface* — the application top bar, the signing-in
+     bar, the letter on the white logo tile. Deliberately identical in both
+     themes, and deliberately NOT `--primary`: a brand surface is the one place
+     the product states its identity, and an identity that changes colour with
+     the theme is not one. `--on-brand` (white) is its only text colour;
+     the pair measures 4.51:1 in light and in dark alike. */
+  --brand-surface: oklch(0.5559 0.0953 185.47); /* #0D857B */
+  --brand-dark: oklch(0.4479 0.0757 186.15); /* #0A625B  C.tealDk */
+  --brand-subtle: oklch(0.9476 0.0143 180.7); /* #E4F1EE  C.active */
+  --brand-track: oklch(0.9289 0.011 182.86); /* #E0EAE8  spinner track */
+  --border-subtle: oklch(0.941 0.0069 174.37); /* #E7EDEB  C.bd2 */
+  --on-brand: oklch(1 0 0); /* #FFFFFF  on teal */
+  --on-brand-muted: oklch(0.8954 0.0414 185.1); /* #BFE6E0  brand-panel body */
+  --auth-surface: oklch(0.9706 0.0034 174.48); /* #F3F6F5  sign-in page bg */
+  /* The sign-in brand panel, verbatim from app-source.txt 2274:
+     `linear-gradient(155deg,#14988B 0%,#0A625B 60%,#073f3a 100%)`.
+     Held as one token rather than three stops — the angle is part of the
+     design, and no consumer should be able to reassemble it differently. */
+  --brand-gradient: linear-gradient(
+    155deg,
+    oklch(0.6125 0.1049 184.06) 0%,
+    oklch(0.4479 0.0757 186.15) 60%,
+    oklch(0.3325 0.0548 185.66) 100%
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   Dark theme — DERIVED, not transcribed.
+
+   The prototype has no dark mode (see its documented gaps), but this repo ships
+   a theme toggle and the code quality standard requires every surface to be
+   legible in both. So this is the teal family carried into
+   dark surfaces at the same hue (~183–186), not a second palette: the prototype
+   hues are preserved and only lightness moves.
+
+   The one inversion that matters: `--primary-foreground` is the dark surface,
+   not white. White on this teal measures 2.59:1; the dark surface on it
+   measures 6.86:1. A bright accent on a dark theme takes dark text.
+--------------------------------------------------------------------------- */
+.dark {
+  --background: oklch(0.2064 0.0164 182.1); /* #0F1A18 */
+  --foreground: oklch(0.9571 0.0055 183.03); /* #EDF2F1  C.bg, reused */
+  --card: oklch(0.2456 0.0216 170.26); /* #16241F */
+  --card-foreground: oklch(0.9571 0.0055 183.03); /* #EDF2F1 */
+  --popover: oklch(0.2456 0.0216 170.26); /* #16241F */
+  --popover-foreground: oklch(0.9571 0.0055 183.03); /* #EDF2F1 */
+
+  --primary: oklch(0.6943 0.1121 183.68); /* #2FB3A4 */
+  --primary-foreground: oklch(0.2064 0.0164 182.1); /* #0F1A18, 6.86:1 */
+
+  --secondary: oklch(0.2763 0.0245 174.1); /* #1B2C27 */
+  --secondary-foreground: oklch(0.9571 0.0055 183.03); /* #EDF2F1 */
+  --muted: oklch(0.2763 0.0245 174.1); /* #1B2C27 */
+  --muted-foreground: oklch(0.7324 0.0209 180.88); /* #9BADA9  C.mut2 */
+  --accent: oklch(0.2973 0.0355 180.8); /* #17332E */
+  --accent-foreground: oklch(0.749 0.1143 183.49); /* #43C5B5 */
+
+  /* PRICOL.Critical lifted for a dark surface — #C0392B measures 2.85:1 on
+     --card, below even the 3:1 non-text bar. This reads 6.36:1. */
+  --destructive: oklch(0.7306 0.1374 25.81); /* #F2837A */
+  --border: oklch(0.342 0.0259 176.6); /* #2A3D38 */
+  --input: oklch(0.342 0.0259 176.6); /* #2A3D38 */
+  --ring: oklch(0.6943 0.1121 183.68); /* #2FB3A4, 6.86:1 on background */
+
+  --chart-1: oklch(0.6943 0.1121 183.68); /* #2FB3A4 */
+  --chart-2: oklch(0.749 0.1143 183.49); /* #43C5B5 */
+  --chart-3: oklch(0.7686 0.1447 62.32); /* amber, lifted for dark */
+  --chart-4: oklch(0.7227 0.1503 147.03); /* green, lifted for dark */
+  --chart-5: oklch(0.7306 0.1374 25.81); /* #F2837A */
+
+  --sidebar: oklch(0.2456 0.0216 170.26); /* #16241F */
+  --sidebar-foreground: oklch(0.9571 0.0055 183.03); /* #EDF2F1 */
+  --sidebar-primary: oklch(0.6943 0.1121 183.68); /* #2FB3A4 */
+  --sidebar-primary-foreground: oklch(0.2064 0.0164 182.1); /* #0F1A18 */
+  --sidebar-accent: oklch(0.2973 0.0355 180.8); /* #17332E */
+  --sidebar-accent-foreground: oklch(0.749 0.1143 183.49); /* #43C5B5 */
+  --sidebar-border: oklch(0.342 0.0259 176.6); /* #2A3D38 */
+  --sidebar-ring: oklch(0.6943 0.1121 183.68); /* #2FB3A4 */
+
+  /* --- Brand tokens ------------------------------------------------------- */
+  /* Not inverted — see the light-theme note. The brand surface holds its
+     colour across themes so the top bar and logo tile stay the product's. */
+  --brand-surface: oklch(0.5559 0.0953 185.47); /* #0D857B */
+  /* Inverted against light: "brand-dark" means "the emphatic teal", and on a
+     dark surface the emphatic teal is the brighter one. */
+  --brand-dark: oklch(0.749 0.1143 183.49); /* #43C5B5 */
+  --brand-subtle: oklch(0.2973 0.0355 180.8); /* #17332E */
+  --brand-track: oklch(0.342 0.0259 176.6); /* #2A3D38 */
+  --border-subtle: oklch(0.2763 0.0245 174.1); /* #1B2C27 */
+  --on-brand: oklch(1 0 0); /* #FFFFFF, on the gradient */
+  --on-brand-muted: oklch(0.8954 0.0414 185.1); /* #BFE6E0 */
+  --auth-surface: oklch(0.2064 0.0164 182.1); /* #0F1A18 */
+  /* The brand panel keeps its light-theme gradient in both themes: it is a
+     saturated brand surface carrying only white text, it already clears AA
+     there (7.21:1), and darkening it would erase the one place the product's
+     identity is stated at full strength. */
+  --brand-gradient: linear-gradient(
+    155deg,
+    oklch(0.6125 0.1049 184.06) 0%,
+    oklch(0.4479 0.0757 186.15) 60%,
+    oklch(0.3325 0.0548 185.66) 100%
+  );
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
