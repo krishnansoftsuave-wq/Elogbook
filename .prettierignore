@@ -1,0 +1,11 @@
+.next
+node_modules
+coverage
+playwright-report
+test-results
+package-lock.json
+*.md
+
+# Delivered prototype bundle and its extracted source — generated artefacts,
+# reformatting them would corrupt the bundle and destroy the diff between
+# prototype versions.

@@ -1,0 +1,98 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+# Playwright output — never commit playwright-report/ or test-results/.
+/playwright-report/
+/test-results/
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+# ...but the template of required variables belongs in the repo.
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# local developer tooling — machine-local, not part of the codebase
+.claude/
+.claude.json
+.claude.json.backup
+CLAUDE.md
+CLAUDE.local.md
+claude example/
+init.md
+AGENTS.md
+AGENT.md
+.agent/
+.agents/
+.codex/
+.copilot/
+.github/copilot-instructions.md
+.github/instructions/
+.github/prompts/
+.github/chatmodes/
+.cursor/
+.cursorrules
+.cursorignore
+.cursorindexingignore
+.windsurf/
+.windsurfrules
+.codeium/
+GEMINI.md
+.gemini/
+.clinerules
+.clinerules/
+.roo/
+.roomodes
+.kilocode/
+.aider*
+.continue/
+.junie/
+.cody/
+.sourcegraph/
+.zed/
+.opencode/
+.goose/
+.qodo/
+.tabnine/
+.serena/
+.specstory/
+.mcp.json
+mcp.json
+.mcp/
+
+# IDE
+.idea
+
