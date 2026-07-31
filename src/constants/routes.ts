@@ -1,4 +1,4 @@
-import type { Permission } from "@/constants/permissions";
+import { WILDCARD_PERMISSION, type Permission } from "@/constants/permissions";
 
 /**
  * The whole sign-in surface. Nothing under here is gated, and a 401 raised on
@@ -11,18 +11,49 @@ export const ROUTES = {
   /** Neutral authenticated landing: forwards to `homeForSession`. */
   HOME: "/",
   LOGIN: `${AUTH_ROUTE_PREFIX}/login`,
-  /** Dev-only stand-in for the AD FS redirect, until tracker A-01 lands. */
-  MOCK_ADFS: `${AUTH_ROUTE_PREFIX}/mock-adfs`,
-  /** Where AD FS will land at cutover; today the `/dev/token` exchange. */
+  /**
+   * Where AD FS will land at cutover; today the `/dev/token` exchange.
+   *
+   * `MOCK_ADFS` used to sit above this — an invented "Choose an account" screen
+   * standing between the sign-in button and here. It is gone: the button
+   * redirects straight to this reply URL, which is what real AD FS does once
+   * somebody has authenticated, and choosing an identity moved to
+   * `DevRoleSwitcher` in the sidebar footer where the prototype puts it.
+   */
   CALLBACK: `${AUTH_ROUTE_PREFIX}/callback`,
   /** §5's deny screen for an AD account mapped to no platform role. */
   ACCESS_DENIED: `${AUTH_ROUTE_PREFIX}/access-denied`,
+  /**
+   * §7.10 — administration.
+   *
+   * `USER_ADD` and `USER_EDIT` are gone with the routes behind them. The
+   * directory mirrors Active Directory (**FR-AUTH-02**), so there is nothing to
+   * create here and nothing to edit but platform access, which is a control on
+   * the row rather than a screen of its own. Keyed by `username` for the same
+   * reason the API is.
+   */
   ADMIN: {
     USERS: "/admin/users",
-    USER_ADD: "/admin/users/add",
-    USER_EDIT: (id: string) => `/admin/users/edit/${id}`,
-    USER_PREVIEW: (id: string) => `/admin/users/${id}/preview`,
+    USER_PREVIEW: (username: string) => `/admin/users/${username}/preview`,
+    /** FR-PA-05 / FR-SUM-08 / FR-ADM-06 — the four workflow switches. */
+    WORKFLOWS: "/admin/workflows",
+    /** FR-ADM-05 / FR-OBS-01 / §9.3 — the immutable trail. */
+    AUDIT: "/admin/audit",
+    /** FR-HOME-03 — Administrator-configurable shift boundaries. */
+    SHIFT_CONFIG: "/admin/shift-config",
   },
+  /** §7.2 / FR-HOME-01 — the role-based dashboard FR-AUTH-01 redirects to. */
+  DASHBOARD: "/dashboard",
+  /** §7.6 — pending actions. */
+  ACTIONS: "/actions",
+  ACTION_DETAIL: (id: string) => `/actions/${id}`,
+  /** §7.5 — shift summaries. */
+  SUMMARIES: "/summaries",
+  SUMMARY_DETAIL: (id: string) => `/summaries/${id}`,
+  /** §7.4 — the bilingual AI assistant. */
+  ASSISTANT: "/assistant",
+  /** §7.9 — in-app notifications. */
+  NOTIFICATIONS: "/notifications",
   LOGBOOK: "/logbook",
   ENTRY_ADD: "/logbook/add",
   ENTRY_EDIT: (id: string) => `/logbook/edit/${id}`,
@@ -53,6 +84,148 @@ interface RoutePolicy {
  */
 export const ROUTE_PERMISSIONS = {
   ADMIN: { prefix: "/admin", permissions: ["user:read"] },
+  /**
+   * §7.10 — the workflow switches, and **the first nested policy in this
+   * table**. `requiredPermissionsFor` resolves the longest matching prefix, so
+   * this overrides `ADMIN` for `/admin/workflows` and everything beneath it
+   * while leaving `/admin/users` on `user:read`.
+   *
+   * **`access:control`, not the wildcard** — this entry was wrong once and the
+   * correction is worth recording. It read `[WILDCARD_PERMISSION]`, justified by
+   * §6.5's *fifth* bullet ("Can view users"). Its **fourth** bullet is
+   * *"Control access to comments and the decision workflow"*, and **FR-ADM-06**,
+   * **FR-DASH-03** and the §4 role table all say the same — so two of the four
+   * switches on this screen are a Super User capability, and the wildcard locked
+   * the one role a requirement names out of it.
+   *
+   * `access:control` is the permission §6 grants the Super User and, until now,
+   * the only one of theirs that gated nothing anywhere in the app. Which of the
+   * four switches each session may actually flip is decided per key by
+   * `WORKFLOW_PERMISSION` — a route gate cannot express that, and should not
+   * pretend to.
+   *
+   * `user:read` rides along because a policy must record a route's **effective**
+   * requirement, its own plus every ancestor guard's. The `(admin)` layout above
+   * demands `user:read`; an entry naming only the leaf would admit a custom role
+   * holding `access:control` alone and then have the group guard bounce it — the
+   * infinite redirect `ACTIONS` documents.
+   */
+  ADMIN_WORKFLOWS: {
+    prefix: "/admin/workflows",
+    permissions: ["user:read", "access:control"],
+  },
+  /**
+   * §7.11 — the audit trail, and **Administrator-only**.
+   *
+   * The wildcard, deliberately, one phase after `ADMIN_WORKFLOWS` was walked
+   * *back* from it. That is the same test giving the opposite answer, not a
+   * regression: workflows changed because the BRD names the Super User for that
+   * capability four times over. Run the identical search here and §6.5's five
+   * bullets are silent, while §6.4 gives the Administrator *"Monitor system
+   * health; **review audit and AI-usage logs**; manage security settings"* and
+   * §9.3 says the store is *"available to administrators for review"*.
+   *
+   * There is no `audit:read` to reach for, and inventing one would both invent a
+   * requirement and *widen* access — a named permission is one an Admin-created
+   * custom role could be granted, which no requirement authorises. The wildcard
+   * is the only permission this build's model gives the Administrator and
+   * withholds from the Super User, and `GET /audit` already takes it: a narrower
+   * gate would admit somebody to a screen whose only request 403s.
+   *
+   * It subsumes the `(admin)` group's `user:read` rather than skipping it —
+   * `hasPermission` treats `*` as holding everything — so the effective-
+   * requirement rule is satisfied by the one entry.
+   */
+  ADMIN_AUDIT: {
+    prefix: "/admin/audit",
+    permissions: [WILDCARD_PERMISSION],
+  },
+  /**
+   * §7.2 / FR-HOME-03 — shift boundaries. Administrator-only on the same
+   * reading: §6.4 lists *"Configure shift timings; report and summary
+   * generation follows configured times"*, §6.5 says nothing about it, and
+   * `PUT /admin/shift-config` already takes the wildcard. (`GET` is open to any
+   * session, because every dashboard needs to know where the boundary is.)
+   */
+  ADMIN_SHIFT_CONFIG: {
+    prefix: "/admin/shift-config",
+    permissions: [WILDCARD_PERMISSION],
+  },
+  /**
+   * §7.6. `action:read` is held by Operator, Supervisor and Management, and
+   * NOT by Super User — so this is one of the routes that produces §3's 403 for
+   * a perfectly valid token, at the API as well as here (FR-ADM-03).
+   *
+   * **`shift:read` is listed because the route inherits it, not because the
+   * screen wants it.** `/actions` sits inside the `(user)` route group, whose
+   * layout guard requires `shift:read`, so entering it really needs both. An
+   * entry that recorded only the leaf permission was a live infinite redirect:
+   * `homeForSession(["action:read"])` returned `/actions`, the group guard
+   * denied it, and `RoleGuard` redirected to `homeForSession` — the same route,
+   * for ever. No base role could reach that state, but **FR-ADM-02**'s
+   * Admin-created custom roles can, and `constants/permissions.ts` is explicit
+   * that this build cannot name every permission set the backend may send.
+   *
+   * The rule this encodes: **a policy must record a route's *effective*
+   * requirement — its own plus every ancestor guard's** — because
+   * `homeForSession`, the sidebar filter and the edge proxy all answer from
+   * this table alone and none of them can see a layout. `access.test.ts` pins
+   * it.
+   */
+  ACTIONS: {
+    prefix: "/actions",
+    permissions: ["shift:read", "action:read"],
+  },
+  /**
+   * §7.2 — the FR-HOME-01 dashboard.
+   *
+   * `shift:read` is both its own requirement and the `(user)` group's, so the
+   * effective list is a single permission. There is deliberately **no
+   * `dashboard:read`**: `constants/permissions.ts` has no such entry, and the
+   * one it does have for Super User — `dashboard:configure` — is the right to
+   * *configure* someone else's dashboard (FR-ADM-06), not to view this one.
+   *
+   * PROVISIONAL, on the same terms as the entries above: `shift:read` is the
+   * defensible reading because every operational role holds it and Super User
+   * holds none of it, but no requirement says in words which permission gates
+   * this screen.
+   */
+  DASHBOARD: { prefix: "/dashboard", permissions: ["shift:read"] },
+  /**
+   * §7.5 — shift summaries. Two permissions for the same reason `ACTIONS` has
+   * two: the screen wants `summary:read`, and the `(user)` layout it nests
+   * inside demands `shift:read`. Recording only the leaf here would rebuild the
+   * infinite redirect described above — this is the entry that would have
+   * repeated it.
+   */
+  SUMMARIES: {
+    prefix: "/summaries",
+    permissions: ["shift:read", "summary:read"],
+  },
+  /**
+   * §7.4 — the assistant. Two permissions for the reason the entries above
+   * carry two: the screen wants `assistant:query`, and the `(user)` layout it
+   * nests inside demands `shift:read`.
+   *
+   * `assistant:query` is held by Operator, Supervisor and Management, and not by
+   * Super User — so this is another route that answers §3's 403 for a perfectly
+   * valid token, at the API as well as here (FR-ADM-03).
+   */
+  ASSISTANT: {
+    prefix: "/assistant",
+    permissions: ["shift:read", "assistant:query"],
+  },
+  /**
+   * §7.9 — notifications. **FR-NOT-01 is "All roles"**, so this is gated on
+   * nothing beyond the `(user)` group's own `shift:read`.
+   *
+   * That does leave Super User out, and it is the one role the requirement's
+   * "All roles" and this build's permission table genuinely disagree about:
+   * Super User holds no operational permission at all, so there is no session
+   * shape that reaches this route without also reaching the rest of the
+   * operational tree. Flagged rather than resolved by inventing a permission.
+   */
+  NOTIFICATIONS: { prefix: "/notifications", permissions: ["shift:read"] },
   LOGBOOK: { prefix: "/logbook", permissions: ["shift:read"] },
 } as const satisfies Record<string, RoutePolicy>;
 
@@ -60,8 +233,31 @@ export const ROUTE_PERMISSIONS = {
  * Where a session may land, most privileged first. `homeForSession` returns the
  * first entry the session can actually reach, which is what keeps a redirect
  * from targeting a route that would bounce it straight back.
+ *
+ * **FR-AUTH-01** — "map to a role and redirect to a role-based dashboard" — is
+ * satisfied by `/dashboard`, which is why it is here. `/actions` held the slot
+ * as an acknowledged stand-in through Phase 1a; a pending-actions list is one
+ * quarter of what FR-HOME-01 defines a dashboard to be, and that shortfall is
+ * now closed.
+ *
+ * `/actions` is **not** a candidate any more, and its absence is deliberate
+ * rather than an oversight. It requires `shift:read` *and* `action:read`, while
+ * `/dashboard` requires only `shift:read` — so every session that could ever
+ * have landed on `/actions` reaches `/dashboard` first and the entry could never
+ * be selected. A permanently unreachable row in a policy table reads like a live
+ * fallback to the next person, which is worse than no row.
+ *
+ * `/admin/users` stays **first** so an Administrator lands in the admin tree
+ * rather than on the operations dashboard, and stays *at all* because it is
+ * gated on `user:read`, which Super User holds — and Super User holds *nothing
+ * else that opens any route*. Removing it would send a legitimate role to the §5
+ * access-denied screen. Phase 3 replaces it with the real admin screens.
+ *
+ * `/logbook` was here once. It is the entries scaffold, whose `/entries`
+ * endpoint has no mock handler, so an Operator signing in landed on a
+ * connection-error toast as the first thing they saw.
  */
 export const HOME_CANDIDATES: readonly string[] = [
   ROUTES.ADMIN.USERS,
-  ROUTES.LOGBOOK,
+  ROUTES.DASHBOARD,
 ];

@@ -18,11 +18,78 @@ const permissionsFor = (...roles: readonly (typeof ROLE_VALUES)[number][]) =>
 describe("requiredPermissionsFor", () => {
   it("covers a prefix and everything beneath it", () => {
     expect(requiredPermissionsFor("/admin")).toEqual(["user:read"]);
-    expect(requiredPermissionsFor("/admin/users/add")).toEqual(["user:read"]);
+    expect(
+      requiredPermissionsFor("/admin/users/said.albusaidi/preview")
+    ).toEqual(["user:read"]);
     expect(requiredPermissionsFor("/logbook")).toEqual(["shift:read"]);
     expect(requiredPermissionsFor("/logbook/42/preview")).toEqual([
       "shift:read",
     ]);
+    expect(requiredPermissionsFor("/actions")).toEqual([
+      "shift:read",
+      "action:read",
+    ]);
+    expect(requiredPermissionsFor("/actions/ACT-2041")).toEqual([
+      "shift:read",
+      "action:read",
+    ]);
+    expect(requiredPermissionsFor("/dashboard")).toEqual(["shift:read"]);
+    expect(requiredPermissionsFor("/summaries")).toEqual([
+      "shift:read",
+      "summary:read",
+    ]);
+    expect(requiredPermissionsFor("/summaries/SUM-20260731-D")).toEqual([
+      "shift:read",
+      "summary:read",
+    ]);
+    expect(requiredPermissionsFor("/assistant")).toEqual([
+      "shift:read",
+      "assistant:query",
+    ]);
+    // FR-NOT-01 is "All roles", so nothing narrower than the group's own guard.
+    expect(requiredPermissionsFor("/notifications")).toEqual(["shift:read"]);
+  });
+
+  /**
+   * The rule Phase 1a's infinite redirect established: a policy records a
+   * route's **effective** requirement — its own plus every ancestor guard's —
+   * because `homeForSession`, the sidebar filter and the edge proxy all answer
+   * from this table and none of them can see a layout.
+   *
+   * Both 1b routes nest inside the `(user)` group, so both must carry its
+   * `shift:read`. `/summaries` is the one that would have repeated the bug.
+   */
+  it("records the ancestor group's permission, not only the leaf's", () => {
+    for (const route of [
+      "/dashboard",
+      "/summaries",
+      "/actions",
+      "/assistant",
+      "/notifications",
+    ]) {
+      expect(requiredPermissionsFor(route)).toContain("shift:read");
+    }
+  });
+
+  /**
+   * The longest matching prefix wins. `/admin/workflows` is the first policy in
+   * this table nested inside another, and it is the case the sort in
+   * `requiredPermissionsFor` was written for — without it the answer would
+   * depend on object key order, which nothing guarantees.
+   */
+  it("lets a nested policy override the one above it", () => {
+    expect(requiredPermissionsFor("/admin/workflows")).toEqual([
+      "user:read",
+      "access:control",
+    ]);
+    expect(requiredPermissionsFor("/admin/users")).toEqual(["user:read"]);
+    // Everything beneath the nested prefix inherits the narrower rule too.
+    expect(requiredPermissionsFor("/admin/workflows/anything")).toEqual([
+      "user:read",
+      "access:control",
+    ]);
+    expect(requiredPermissionsFor("/admin/audit")).toEqual(["*"]);
+    expect(requiredPermissionsFor("/admin/shift-config")).toEqual(["*"]);
   });
 
   it("requires nothing of a route no policy covers", () => {
@@ -34,6 +101,7 @@ describe("requiredPermissionsFor", () => {
   it("does not match a route that merely starts with the same letters", () => {
     expect(requiredPermissionsFor("/administration")).toEqual([]);
     expect(requiredPermissionsFor("/logbooks")).toEqual([]);
+    expect(requiredPermissionsFor("/actionsomething")).toEqual([]);
   });
 });
 
@@ -80,6 +148,147 @@ describe("canAccess", () => {
     expect(canAccess(operator, "/admin/users")).toBe(false);
   });
 
+  /**
+   * §7.10. **The Super User belongs on the workflow screen**, and this entry was
+   * wrong once in the other direction: it required the wildcard, on the strength
+   * of §6.5's *fifth* bullet ("Can view users"). Its **fourth** bullet is
+   * *"Control access to comments and the decision workflow"*, and **FR-ADM-06**,
+   * **FR-DASH-03** and the §4 role table all say the same.
+   *
+   * `access:control` is the permission §6 grants them for exactly this, and it
+   * gated nothing anywhere in the app until now. *Which* of the four switches a
+   * session may flip is `WORKFLOW_PERMISSION`'s job — a route gate cannot say.
+   */
+  it("admits both admin-tree roles to /admin/workflows and nobody else", () => {
+    for (const role of [ROLES.SUPER_USER, ROLES.ADMINISTRATOR]) {
+      expect(canAccess(permissionsFor(role), "/admin/users")).toBe(true);
+      expect(canAccess(permissionsFor(role), "/admin/workflows")).toBe(true);
+    }
+
+    for (const role of [ROLES.OPERATOR, ROLES.SUPERVISOR, ROLES.MANAGEMENT]) {
+      expect(canAccess(permissionsFor(role), "/admin/workflows")).toBe(false);
+    }
+  });
+
+  /**
+   * The effective-permission rule, on the entry that would have broken it: a
+   * custom role holding `access:control` alone passes the leaf policy but would
+   * be bounced by the `(admin)` group guard above it — the infinite redirect
+   * `ACTIONS` documents. Listing `user:read` too is what prevents that.
+   */
+  it("refuses access:control alone, because the admin group guard would", () => {
+    expect(canAccess(["access:control"], "/admin/workflows")).toBe(false);
+    expect(canAccess(["access:control", "user:read"], "/admin/workflows")).toBe(
+      true
+    );
+  });
+
+  /**
+   * §7.11 and §7.2 — **Administrator-only**, one phase after `ADMIN_WORKFLOWS`
+   * was deliberately walked back *from* the wildcard. That is the same test
+   * giving the opposite answer: the BRD names the Super User for comment and
+   * decision-workflow access four times over, and for audit or shift timings
+   * **zero** times. §6.4 lists both under the Administrator instead.
+   */
+  it("keeps a Super User out of the audit log and the shift timings", () => {
+    const superUser = permissionsFor(ROLES.SUPER_USER);
+    expect(canAccess(superUser, "/admin/users")).toBe(true);
+    expect(canAccess(superUser, "/admin/workflows")).toBe(true);
+    expect(canAccess(superUser, "/admin/audit")).toBe(false);
+    expect(canAccess(superUser, "/admin/shift-config")).toBe(false);
+
+    const administrator = permissionsFor(ROLES.ADMINISTRATOR);
+    expect(canAccess(administrator, "/admin/audit")).toBe(true);
+    expect(canAccess(administrator, "/admin/shift-config")).toBe(true);
+  });
+
+  it("keeps every operational role out of both", () => {
+    for (const role of [ROLES.OPERATOR, ROLES.SUPERVISOR, ROLES.MANAGEMENT]) {
+      expect(canAccess(permissionsFor(role), "/admin/audit")).toBe(false);
+      expect(canAccess(permissionsFor(role), "/admin/shift-config")).toBe(
+        false
+      );
+    }
+  });
+
+  /**
+   * §7.6's screen. `action:read` is held by the three operational roles and not
+   * by Super User, which is what makes `/actions` the UI half of the same 403
+   * `GET /api/v1/actions` produces for a perfectly valid token (FR-ADM-03).
+   */
+  it("opens /actions to the operational roles and refuses Super User", () => {
+    for (const role of [ROLES.OPERATOR, ROLES.SUPERVISOR, ROLES.MANAGEMENT]) {
+      expect(canAccess(permissionsFor(role), "/actions")).toBe(true);
+      expect(canAccess(permissionsFor(role), "/actions/ACT-2041")).toBe(true);
+    }
+    expect(canAccess(permissionsFor(ROLES.SUPER_USER), "/actions")).toBe(false);
+    expect(canAccess(permissionsFor(ROLES.ADMINISTRATOR), "/actions")).toBe(
+      true
+    );
+  });
+
+  /**
+   * §7.5's screen. `summary:read` is held by Operator, Supervisor and Management
+   * — FR-SUM-07 shows summaries to "All roles" — and not by Super User, whose
+   * permissions are configuration rights rather than operational reads.
+   */
+  it("opens /summaries to the operational roles and refuses Super User", () => {
+    for (const role of [ROLES.OPERATOR, ROLES.SUPERVISOR, ROLES.MANAGEMENT]) {
+      expect(canAccess(permissionsFor(role), "/summaries")).toBe(true);
+      expect(canAccess(permissionsFor(role), "/summaries/SUM-20260731-D")).toBe(
+        true
+      );
+      expect(canAccess(permissionsFor(role), "/dashboard")).toBe(true);
+    }
+    expect(canAccess(permissionsFor(ROLES.SUPER_USER), "/summaries")).toBe(
+      false
+    );
+    expect(canAccess(permissionsFor(ROLES.SUPER_USER), "/dashboard")).toBe(
+      false
+    );
+    expect(canAccess(permissionsFor(ROLES.ADMINISTRATOR), "/summaries")).toBe(
+      true
+    );
+  });
+
+  /**
+   * §7.4's screen. `assistant:query` is held by Operator, Supervisor and
+   * Management — §6.1 and §6.2 both list "Ask Assistant" — and not by Super
+   * User, whose permissions are configuration rights.
+   */
+  it("opens /assistant to the operational roles and refuses Super User", () => {
+    for (const role of [ROLES.OPERATOR, ROLES.SUPERVISOR, ROLES.MANAGEMENT]) {
+      expect(canAccess(permissionsFor(role), "/assistant")).toBe(true);
+    }
+    expect(canAccess(permissionsFor(ROLES.SUPER_USER), "/assistant")).toBe(
+      false
+    );
+    expect(canAccess(permissionsFor(ROLES.ADMINISTRATOR), "/assistant")).toBe(
+      true
+    );
+  });
+
+  /**
+   * §7.9. **FR-NOT-01 is "All roles"** and every operational role holds
+   * `shift:read`, so all three reach it.
+   *
+   * Super User does not, and that is the one place this build's permission table
+   * and the requirement's "All roles" genuinely disagree — Super User holds no
+   * operational permission at all. Pinned so the disagreement stays visible
+   * rather than being discovered later as a bug.
+   */
+  it("opens /notifications to every operational role", () => {
+    for (const role of [ROLES.OPERATOR, ROLES.SUPERVISOR, ROLES.MANAGEMENT]) {
+      expect(canAccess(permissionsFor(role), "/notifications")).toBe(true);
+    }
+    expect(
+      canAccess(permissionsFor(ROLES.ADMINISTRATOR), "/notifications")
+    ).toBe(true);
+    expect(canAccess(permissionsFor(ROLES.SUPER_USER), "/notifications")).toBe(
+      false
+    );
+  });
+
   it("lets a super user into the admin tree but not the logbook", () => {
     // The inverse case, and the one a role-precedence list got wrong before:
     // `super_user` holds `user:read` and no `shift:read`.
@@ -112,20 +321,134 @@ describe("homeForSession", () => {
     );
   });
 
-  it("sends every operational role to the logbook", () => {
-    expect(homeForSession(permissionsFor(ROLES.OPERATOR))).toBe(ROUTES.LOGBOOK);
-    expect(homeForSession(permissionsFor(ROLES.SUPERVISOR))).toBe(
-      ROUTES.LOGBOOK
-    );
-    expect(homeForSession(permissionsFor(ROLES.MANAGEMENT))).toBe(
-      ROUTES.LOGBOOK
-    );
+  /**
+   * **FR-AUTH-01** — "map to a role and redirect to a role-based dashboard".
+   *
+   * `/logbook` held this slot first (the entries scaffold, whose `/entries`
+   * endpoint has no handler — a connection-error toast as the first thing an
+   * Operator saw), then `/actions` as an acknowledged stand-in through Phase 1a.
+   * A pending-actions list is one quarter of what FR-HOME-01 calls a dashboard;
+   * `/dashboard` is the requirement actually met.
+   */
+  it("sends every operational role to the dashboard (FR-AUTH-01)", () => {
+    for (const role of [ROLES.OPERATOR, ROLES.SUPERVISOR, ROLES.MANAGEMENT]) {
+      expect(homeForSession(permissionsFor(role))).toBe(ROUTES.DASHBOARD);
+    }
+  });
+
+  it("no longer routes anyone to the entries scaffold", () => {
+    expect(HOME_CANDIDATES).not.toContain(ROUTES.LOGBOOK);
+  });
+
+  /**
+   * `/actions` was removed from the candidate list rather than left behind it.
+   * It requires `shift:read` **and** `action:read`; `/dashboard` requires only
+   * `shift:read` and sits ahead of it — so no session could ever have reached
+   * the `/actions` entry, and a permanently unreachable row in a policy table
+   * reads to the next person like a live fallback.
+   */
+  it("drops the candidate /dashboard strictly dominates", () => {
+    expect(HOME_CANDIDATES).not.toContain(ROUTES.ACTIONS);
+
+    for (const permissions of [
+      ["shift:read"],
+      ["shift:read", "action:read"],
+      ["shift:read", "summary:read", "action:read"],
+    ]) {
+      expect(homeForSession(permissions)).not.toBe(ROUTES.ACTIONS);
+    }
+  });
+
+  /**
+   * The reason `/admin/users` stays in `HOME_CANDIDATES` despite having the same
+   * missing-endpoint problem: `user:read` is the *only* permission Super User
+   * holds that opens any route at all. Drop it and a legitimate role lands on
+   * the §5 deny screen.
+   */
+  it("keeps a home for Super User, whose only route is the admin tree", () => {
+    const superUser = permissionsFor(ROLES.SUPER_USER);
+    expect(homeForSession(superUser)).toBe(ROUTES.ADMIN.USERS);
+    expect(homeForSession(superUser)).not.toBe(ROUTES.ACCESS_DENIED);
   });
 
   it("prefers the most privileged reachable home for a multi-role session", () => {
     expect(
       homeForSession(permissionsFor(ROLES.OPERATOR, ROLES.SUPER_USER))
     ).toBe(ROUTES.ADMIN.USERS);
+  });
+
+  /**
+   * The invariant this module's docblock claims: every route `homeForSession`
+   * returns has just been approved by `canAccess`, so a guard that redirects
+   * here can never send a session somewhere the same guard bounces it from.
+   *
+   * It was briefly false. `/actions` lives inside the `(user)` route group,
+   * whose layout guard requires `shift:read`, but its policy recorded only
+   * `action:read` — so a session holding `action:read` alone was sent to
+   * `/actions`, denied by the group guard, and redirected to `/actions` again.
+   * An infinite replace loop, reachable by any FR-ADM-02 custom role.
+   *
+   * This walks permission sets the base-role table cannot produce, precisely
+   * because §6 says the backend can send sets this build has never seen.
+   */
+  it("never returns a home the route's own policy would refuse", () => {
+    const SETS: readonly string[][] = [
+      ["action:read"],
+      ["shift:read"],
+      ["user:read"],
+      ["action:read", "user:read"],
+      ["shift:read", "action:read"],
+      // Phase 1b's additions. `summary:read` alone is the shape that would
+      // have looped on `/summaries` had its policy recorded only the leaf.
+      ["summary:read"],
+      ["summary:read", "user:read"],
+      ["shift:read", "summary:read"],
+      // Phase 1c's.
+      ["assistant:query"],
+      ["shift:read", "assistant:query"],
+      ["chaos:engineer"],
+      ["*"],
+      [],
+    ];
+
+    for (const permissions of SETS) {
+      const home = homeForSession(permissions);
+      if (home === ROUTES.ACCESS_DENIED) continue;
+
+      // Whatever it returned must be enterable — including every permission
+      // an ancestor layout guard contributes.
+      expect(
+        canAccess(permissions, home),
+        `homeForSession(${JSON.stringify(permissions)}) returned ${home}, which it cannot enter`
+      ).toBe(true);
+    }
+  });
+
+  it("sends an action:read-only session to the deny screen, not into a loop", () => {
+    // It can enter neither `/admin/users` nor `/dashboard` (which needs
+    // `shift:read`), so the chain must terminate rather than bounce.
+    expect(homeForSession(["action:read"])).toBe(ROUTES.ACCESS_DENIED);
+  });
+
+  it("sends an assistant:query-only session to the deny screen, not into a loop", () => {
+    expect(homeForSession(["assistant:query"])).toBe(ROUTES.ACCESS_DENIED);
+  });
+
+  it("sends a summary:read-only session to the deny screen, not into a loop", () => {
+    // The same shape for 1b: `/summaries` needs `shift:read` as well, so a
+    // custom role (FR-ADM-02) holding only the leaf must terminate.
+    expect(homeForSession(["summary:read"])).toBe(ROUTES.ACCESS_DENIED);
+  });
+
+  /**
+   * `shift:read` alone opens `/dashboard` and nothing else — which is the whole
+   * point of gating the dashboard on the permission every operational role
+   * holds. A custom role with just that must land somewhere real.
+   */
+  it("gives a shift:read-only custom role the dashboard", () => {
+    expect(homeForSession(["shift:read"])).toBe(ROUTES.DASHBOARD);
+    expect(canAccess(["shift:read"], ROUTES.DASHBOARD)).toBe(true);
+    expect(canAccess(["shift:read"], ROUTES.SUMMARIES)).toBe(false);
   });
 
   it("falls back to the access-denied screen, never to /unauthorized", () => {
@@ -157,7 +480,14 @@ describe("homeForSession", () => {
     "gives %s a home it can reach from any protected route it is bounced off",
     (role) => {
       const permissions = permissionsFor(role);
-      for (const target of ["/admin/users", "/logbook", "/logbook/add"]) {
+      for (const target of [
+        "/admin/users",
+        "/logbook",
+        "/logbook/add",
+        "/dashboard",
+        "/summaries",
+        "/summaries/SUM-20260731-D",
+      ]) {
         if (canAccess(permissions, target)) continue;
         expect(canAccess(permissions, homeForSession(permissions))).toBe(true);
       }

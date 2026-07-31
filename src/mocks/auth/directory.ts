@@ -64,5 +64,17 @@ export const MOCK_ACCOUNTS: readonly MockAccount[] = [
   },
 ] as const;
 
+/**
+ * Who the sign-in button signs you in as.
+ *
+ * The mock AD FS account picker is gone — the button goes straight to the
+ * callback, which is where real AD FS lands the browser once somebody has
+ * authenticated. One identity has to be the default, and the Operator has the
+ * fullest operational surface: dashboard, actions, summaries, assistant and
+ * notifications all open for it. `DevRoleSwitcher` in the sidebar footer is how
+ * you become anybody else.
+ */
+export const DEFAULT_MOCK_ACCOUNT = "said.albusaidi";
+
 export const findMockAccount = (username: string): MockAccount | undefined =>
   MOCK_ACCOUNTS.find((account) => account.username === username);

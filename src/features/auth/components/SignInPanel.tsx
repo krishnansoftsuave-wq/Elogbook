@@ -7,6 +7,7 @@ import { Loader2, LockKeyhole, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/constants/routes";
 import { AuthSplitScreen } from "@/features/auth/components/AuthScreen";
+import { DEFAULT_MOCK_ACCOUNT } from "@/mocks/auth/directory";
 
 interface SignInPanelProps {
   /**
@@ -29,6 +30,12 @@ interface SignInPanelProps {
  *
  * The prototype's 1700 ms fake timeout (2241) is replaced by a real navigation:
  * the pending state lasts exactly as long as the route transition does.
+ *
+ * There is no account picker in between any more. `/auth/mock-adfs` was an
+ * invented screen — in neither the BRD nor the prototype — and choosing an
+ * identity now happens in the sidebar footer (`DevRoleSwitcher`), where the
+ * prototype actually puts it. Signing in as somebody other than the default is
+ * one click *after* you are in, rather than a gate before it.
  */
 export const SignInPanel = ({ returnTo }: SignInPanelProps) => {
   const router = useRouter();
@@ -36,17 +43,20 @@ export const SignInPanel = ({ returnTo }: SignInPanelProps) => {
 
   const handleSignIn = () => {
     setIsRedirecting(true);
+
+    const params = new URLSearchParams({ account: DEFAULT_MOCK_ACCOUNT });
+    if (returnTo) params.set("returnTo", returnTo);
+
     // CUTOVER (tracker A-01): this line becomes
     // `window.location.assign(<AD FS authorize URL>)` with `returnTo` carried
     // in the OAuth `state` parameter. Everything downstream — /auth/callback,
     // the token exchange, GET /me, the permission-derived landing — is
-    // unchanged, which is the whole reason the mock takes a redirect shape
-    // instead of posting to /dev/token from this button.
-    router.push(
-      returnTo
-        ? `${ROUTES.MOCK_ADFS}?returnTo=${encodeURIComponent(returnTo)}`
-        : ROUTES.MOCK_ADFS
-    );
+    // unchanged, which is the whole reason this button takes a redirect shape
+    // instead of posting to /dev/token itself.
+    //
+    // The target is already the reply URL real AD FS will redirect to; only the
+    // `account` param becomes `code` + `state`.
+    router.push(`${ROUTES.CALLBACK}?${params.toString()}`);
   };
 
   return (

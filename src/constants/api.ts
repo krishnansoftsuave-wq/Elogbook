@@ -16,12 +16,20 @@ export const API_ENDPOINTS = {
     /** §7 — auth required, permission `shift:read`. */
     CURRENT: "/shifts/current",
   },
+  /**
+   * §7.10 / FR-ADM-01 — the admin directory, **a mirror of AD**.
+   *
+   * There is deliberately no `CREATE` and no `DELETE`. Identities originate in
+   * Active Directory (FR-AUTH-02), and a user minted here would hold no AD
+   * groups, so `resolveSession` could never sign them in. Both entries existed
+   * before any handler did; removing them is what makes the constant describe
+   * the contract rather than the scaffold's assumptions.
+   */
   USERS: {
     LIST: "/users",
-    CREATE: "/users",
-    DETAIL: (id: string) => `/users/${id}`,
-    UPDATE: (id: string) => `/users/${id}`,
-    DELETE: (id: string) => `/users/${id}`,
+    DETAIL: (username: string) => `/users/${username}`,
+    /** Platform access only — roles and AD groups are read-only. */
+    ACCESS: (username: string) => `/users/${username}`,
   },
   ENTRIES: {
     LIST: "/entries",
@@ -29,6 +37,97 @@ export const API_ENDPOINTS = {
     DETAIL: (id: string) => `/entries/${id}`,
     UPDATE: (id: string) => `/entries/${id}`,
     DELETE: (id: string) => `/entries/${id}`,
+  },
+
+  /* --- The prototype's operational surface (BRD §7.4–§7.12) --------------- */
+
+  /** §7.6 — pending actions. */
+  ACTIONS: {
+    LIST: "/actions",
+    DETAIL: (id: string) => `/actions/${id}`,
+    /** FR-PA-04 lifecycle transition. */
+    STATUS: (id: string) => `/actions/${id}/status`,
+    /** FR-PA-05 — 403s unless the Administrator enabled the workflow. */
+    OWNER: (id: string) => `/actions/${id}/owner`,
+    COMMENTS: (id: string) => `/actions/${id}/comments`,
+  },
+
+  /**
+   * FR-PA-01/02 — AI-extracted candidates. A sibling of `/actions` rather than
+   * `/actions/suggestions`: Next resolves static segments before dynamic ones so
+   * either would work, but a resource that is not an action should not sit at a
+   * path that reads like one action's id.
+   */
+  SUGGESTIONS: {
+    LIST: "/suggestions",
+    CONFIRM: (id: string) => `/suggestions/${id}/confirm`,
+  },
+
+  /** §7.5 — shift summaries. */
+  SUMMARIES: {
+    LIST: "/summaries",
+    /** FR-SUM-02 on-demand generation. FR-SUM-04: no approval gate. */
+    GENERATE: "/summaries",
+    DETAIL: (id: string) => `/summaries/${id}`,
+    /** FR-SUM-08 — permitted only when the Admin has granted comment access. */
+    COMMENTS: (id: string) => `/summaries/${id}/comments`,
+  },
+
+  /** §7.9 — in-app notifications. */
+  NOTIFICATIONS: {
+    LIST: "/notifications",
+    MARK_READ: (id: string) => `/notifications/${id}/read`,
+  },
+
+  /** §7.4 — the assistant. The answer itself is [BACKEND]. */
+  ASSISTANT: {
+    QUERY: "/assistant/query",
+    /**
+     * FR-FB-01 — thumbs up/down with an optional comment, on an answer or on
+     * one of its citations. PROVISIONAL: no feedback endpoint existed in the
+     * Phase 0a contract, so the path is inferred from the requirement.
+     */
+    FEEDBACK: "/assistant/feedback",
+  },
+
+  /** §6.3 — Management risk decisions. No FR-ID of its own; see the schema. */
+  DECISIONS: {
+    LIST: "/decisions",
+    CREATE: "/decisions",
+    DETAIL: (id: string) => `/decisions/${id}`,
+    STATUS: (id: string) => `/decisions/${id}/status`,
+    COMMENTS: (id: string) => `/decisions/${id}/comments`,
+  },
+
+  /** ⚠️ PROTOTYPE-ONLY — no BRD basis. Deferred; contract only, no screens. */
+  REQUESTS: {
+    LIST: "/requests",
+    CREATE: "/requests",
+    DETAIL: (id: string) => `/requests/${id}`,
+    RESOLUTION: (id: string) => `/requests/${id}/resolution`,
+  },
+
+  /** §7.10 — administration. */
+  ADMIN: {
+    /** FR-PA-05, FR-SUM-08, FR-ADM-06 — the four workflow switches. */
+    WORKFLOWS: "/admin/workflows",
+    /** FR-HOME-03 — Administrator-configurable shift boundaries. */
+    SHIFT_CONFIG: "/admin/shift-config",
+    /** FR-NOT-01 — per-user notification permissions. */
+    NOTIFICATION_PERMISSIONS: "/admin/notification-permissions",
+    NOTIFICATION_PERMISSION: (username: string) =>
+      `/admin/notification-permissions/${username}`,
+  },
+
+  /** §7.11 / §9.3 — append-only. There is deliberately no update or delete. */
+  AUDIT: {
+    LIST: "/audit",
+  },
+
+  /** §7.12 — FR-ADM-06's widget-to-role assignment. */
+  DASHBOARDS: {
+    WIDGETS: "/dashboards/widgets",
+    WIDGET: (id: string) => `/dashboards/widgets/${id}`,
   },
 } as const;
 
@@ -47,4 +146,11 @@ export const AUTH_EXEMPT_PATHS: readonly string[] = [
 ];
 
 export const DEFAULT_PAGE_SIZE = 10;
+
+/**
+ * The largest page any endpoint serves, mirroring the cap in
+ * `mocks/handler.ts`. Used where a screen needs a whole collection rather than a
+ * page — a comment thread, or the distinct values behind a filter.
+ */
+export const MAX_PAGE_SIZE = 100;
 export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const;

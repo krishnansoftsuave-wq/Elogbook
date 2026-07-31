@@ -6,6 +6,7 @@ import { MOCK_ERROR_CODES, fail, ok } from "@/mocks/envelope";
 import { isMockApiEnabled, mockDisabledEnvelope } from "@/mocks/http";
 import { mockLatency } from "@/mocks/latency";
 import { currentShift } from "@/mocks/shifts/current";
+import { mockStore } from "@/mocks/store";
 
 /** §7: this endpoint requires `shift:read`. */
 const REQUIRED_PERMISSION = "shift:read";
@@ -47,5 +48,13 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.json(ok(currentShift()), { status: 200 });
+  // Computed against the **stored** configuration, not the seeded defaults —
+  // FR-HOME-03: "The Administrator can change shift timings, and report/summary
+  // generation aligns to them." `/admin/shift-config` is what writes it.
+  return NextResponse.json(
+    ok(currentShift(new Date(), mockStore().shiftConfig)),
+    {
+      status: 200,
+    }
+  );
 }

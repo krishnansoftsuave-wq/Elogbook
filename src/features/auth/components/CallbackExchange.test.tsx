@@ -113,7 +113,7 @@ describe("CallbackExchange", () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
-  it("sends an operator to the logbook once /me answers", async () => {
+  it("sends an operator to the dashboard once /me answers", async () => {
     api.defaults.adapter = adapterFor({
       [API_ENDPOINTS.AUTH.DEV_TOKEN]: { status: 200, data: TOKEN_OK },
       [API_ENDPOINTS.AUTH.ME]: { status: 200, data: ME_OK },
@@ -121,7 +121,7 @@ describe("CallbackExchange", () => {
 
     renderWithProviders(<CallbackExchange account="said.albusaidi" />);
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith(ROUTES.LOGBOOK));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(ROUTES.DASHBOARD));
     expect(useAuthStore.getState().token).toBe("minted-token");
   });
 
@@ -153,7 +153,7 @@ describe("CallbackExchange", () => {
       />
     );
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith(ROUTES.LOGBOOK));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(ROUTES.DASHBOARD));
     expect(replace).not.toHaveBeenCalledWith(
       `/${String.fromCharCode(92)}evil.com`
     );

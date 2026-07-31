@@ -77,7 +77,7 @@ const signInWith = (permissions: readonly string[]) => {
 };
 
 const ADMIN_ONLY = ROUTE_PERMISSIONS.ADMIN.permissions;
-const LOGBOOK_ONLY = ROUTE_PERMISSIONS.LOGBOOK.permissions;
+const ACTIONS_ONLY = ROUTE_PERMISSIONS.ACTIONS.permissions;
 
 describe("RoleGuard", () => {
   beforeEach(() => {
@@ -206,7 +206,10 @@ describe("RoleGuard", () => {
   });
 
   it("sends a wrong-permission session to its own home, never /unauthorized", async () => {
-    signInWith(["shift:read"]);
+    // An operational permission set: `shift:read` alone opens no route now that
+    // `/logbook` has left `HOME_CANDIDATES`, and no real role holds it alone —
+    // Operator, Supervisor and Management all carry `action:read` too.
+    signInWith(["shift:read", "action:read"]);
 
     renderWithProviders(
       <RoleGuard require={ADMIN_ONLY}>
@@ -215,7 +218,7 @@ describe("RoleGuard", () => {
     );
 
     await vi.waitFor(() =>
-      expect(replace).toHaveBeenCalledWith(ROUTES.LOGBOOK)
+      expect(replace).toHaveBeenCalledWith(ROUTES.DASHBOARD)
     );
     expect(replace).not.toHaveBeenCalledWith("/unauthorized");
     expect(screen.queryByRole("heading")).not.toBeInTheDocument();
@@ -224,7 +227,7 @@ describe("RoleGuard", () => {
   it("blocks the admin tree for a session whose nav item is hidden (FR-ADM-03)", async () => {
     // Hiding a link is not access control. The operator never sees the Users
     // link, and typing the route in anyway still does not get them in.
-    signInWith(["shift:read"]);
+    signInWith(["shift:read", "action:read"]);
 
     renderWithProviders(
       <>
@@ -236,28 +239,28 @@ describe("RoleGuard", () => {
     );
 
     expect(
-      await screen.findByRole("link", { name: "Logbook" })
+      await screen.findByRole("link", { name: "Pending actions" })
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Users" })
     ).not.toBeInTheDocument();
 
     await vi.waitFor(() =>
-      expect(replace).toHaveBeenCalledWith(ROUTES.LOGBOOK)
+      expect(replace).toHaveBeenCalledWith(ROUTES.DASHBOARD)
     );
     expect(
       screen.queryByRole("heading", { name: "User directory" })
     ).not.toBeInTheDocument();
   });
 
-  it("keeps a super user out of the logbook and sends them to the admin tree", async () => {
-    // `super_user` holds `user:read` and no `shift:read` — the inverse bounce.
-    pathname.current = "/logbook";
+  it("keeps a super user out of pending actions and sends them to the admin tree", async () => {
+    // `super_user` holds `user:read` and no `action:read` — the inverse bounce.
+    pathname.current = "/actions";
     signInWith(["dashboard:configure", "user:read"]);
 
     renderWithProviders(
-      <RoleGuard require={LOGBOOK_ONLY}>
-        <h1>Logbook</h1>
+      <RoleGuard require={ACTIONS_ONLY}>
+        <h1>Pending actions</h1>
       </RoleGuard>
     );
 

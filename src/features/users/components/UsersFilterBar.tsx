@@ -18,7 +18,6 @@ import { userFiltersSchema } from "@/features/users/schemas";
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
   { value: "active", label: "Active" },
-  { value: "invited", label: "Invited" },
   { value: "suspended", label: "Suspended" },
 ];
 
@@ -52,7 +51,10 @@ export const UsersFilterBar = ({
   <div className="flex flex-wrap items-center gap-2">
     <div className="relative w-full max-w-[280px]">
       <Search
-        className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+        // `start-3`, not `left-3`: the icon sits on the inline start, which
+        // moves to the right edge under `dir="rtl"` (NFR-07). This screen
+        // predates that convention and the rest of the app now follows it.
+        className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
         aria-hidden
       />
       <label htmlFor="user-search" className="sr-only">
@@ -61,8 +63,10 @@ export const UsersFilterBar = ({
       <Input
         id="user-search"
         type="search"
-        placeholder="Search name or email"
-        className="pl-9"
+        // No email in the directory — identity comes from AD, which carries a
+        // username and a display name.
+        placeholder="Search name or username"
+        className="ps-9"
         value={filters.search}
         onChange={(event) => onChange("search", event.target.value)}
       />

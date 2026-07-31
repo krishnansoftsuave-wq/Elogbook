@@ -2,12 +2,25 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookText, PanelLeftClose, PanelLeftOpen, Users } from "lucide-react";
+import {
+  Bell,
+  Bot,
+  Clock,
+  FileText,
+  History,
+  LayoutDashboard,
+  ListChecks,
+  PanelLeftClose,
+  PanelLeftOpen,
+  SlidersHorizontal,
+  Users,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { Permission } from "@/constants/permissions";
 import { ROUTE_PERMISSIONS, ROUTES } from "@/constants/routes";
+import { DevRoleSwitcher } from "@/features/auth/components/DevRoleSwitcher";
 import { useSession } from "@/features/auth/hooks/useSession";
 import { hasPermission } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
@@ -29,19 +42,75 @@ interface NavItem {
  *
  * Filtering here is cosmetic. FR-ADM-03 is satisfied by the layout `RoleGuard`,
  * which blocks the route whether or not its link was ever rendered.
+ *
+ * `/logbook` was removed from this list in Phase 1a. It is the entries scaffold,
+ * whose `/entries` endpoint has no mock handler, so every visit surfaced a
+ * connection-error toast. The feature itself stays — `features/users` and
+ * `features/entries` are the reference implementations every new feature copies
+ * — it simply is not somewhere the demo can route to. `/admin/users` has the
+ * same problem and stays anyway: it is the only route Super User's permissions
+ * open, and `HOME_CANDIDATES` explains why that matters.
  */
 const NAV_ITEMS: readonly NavItem[] = [
   {
-    href: ROUTES.LOGBOOK,
-    label: "Logbook",
-    icon: BookText,
-    permissions: ROUTE_PERMISSIONS.LOGBOOK.permissions,
+    href: ROUTES.DASHBOARD,
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    permissions: ROUTE_PERMISSIONS.DASHBOARD.permissions,
+  },
+  {
+    href: ROUTES.ACTIONS,
+    label: "Pending actions",
+    icon: ListChecks,
+    permissions: ROUTE_PERMISSIONS.ACTIONS.permissions,
+  },
+  {
+    href: ROUTES.SUMMARIES,
+    label: "Shift summaries",
+    icon: FileText,
+    permissions: ROUTE_PERMISSIONS.SUMMARIES.permissions,
+  },
+  {
+    href: ROUTES.ASSISTANT,
+    // The prototype's own label (`app-source.txt` SUPNAV line 3).
+    label: "Ask Assistant",
+    icon: Bot,
+    permissions: ROUTE_PERMISSIONS.ASSISTANT.permissions,
+  },
+  {
+    href: ROUTES.NOTIFICATIONS,
+    label: "Notifications",
+    icon: Bell,
+    permissions: ROUTE_PERMISSIONS.NOTIFICATIONS.permissions,
   },
   {
     href: ROUTES.ADMIN.USERS,
     label: "Users",
     icon: Users,
     permissions: ROUTE_PERMISSIONS.ADMIN.permissions,
+  },
+  {
+    href: ROUTES.ADMIN.WORKFLOWS,
+    label: "Workflows",
+    icon: SlidersHorizontal,
+    // `access:control`, which both admin-tree roles hold — §6.5 gives the Super
+    // User comment and decision-workflow access, so hiding this from them would
+    // hide a capability the BRD grants.
+    permissions: ROUTE_PERMISSIONS.ADMIN_WORKFLOWS.permissions,
+  },
+  {
+    href: ROUTES.ADMIN.SHIFT_CONFIG,
+    label: "Shift timings",
+    icon: Clock,
+    permissions: ROUTE_PERMISSIONS.ADMIN_SHIFT_CONFIG.permissions,
+  },
+  {
+    // The prototype gives Audit Log its own top-level nav row rather than an
+    // admin tab (`app-source.txt` 15–16), and so does this.
+    href: ROUTES.ADMIN.AUDIT,
+    label: "Audit log",
+    icon: History,
+    permissions: ROUTE_PERMISSIONS.ADMIN_AUDIT.permissions,
   },
 ];
 
@@ -131,6 +200,23 @@ export const Sidebar = () => {
           );
         })}
       </nav>
+
+      {/*
+        The prototype's `roleControl()` sits at the foot of the rail
+        (`app-source.txt` 221–222, 246). **Dev-only scaffolding**, not the
+        product's role switcher — that one is admin impersonation behind a
+        permission gate and is still unbuilt.
+
+        The guard is repeated here rather than left to the component's own early
+        return, and that repetition is the point: `process.env.NODE_ENV` is a
+        build-time literal, so in a production bundle this reads
+        `"production" !== "production"`, the JSX is dead, `DevRoleSwitcher`
+        becomes an unused binding, and the module is dropped from the bundle
+        instead of shipped as a component that returns null.
+      */}
+      {process.env.NODE_ENV !== "production" && (
+        <DevRoleSwitcher collapsed={collapsed} />
+      )}
     </aside>
   );
 };

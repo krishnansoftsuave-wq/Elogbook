@@ -1,68 +1,97 @@
 import { describe, expect, it } from "vitest";
 
-import { userFormSchema, userListSchema } from "@/features/users/schemas";
+import {
+  userAccessUpdateSchema,
+  userFiltersSchema,
+} from "@/features/users/schemas";
 
-const validUser = {
-  id: "u1",
-  name: "Ada Lovelace",
-  email: "ada@example.com",
-  role: "administrator",
-  status: "active",
-  createdAt: "2026-01-15T09:30:00.000Z",
-};
-
-describe("userListSchema", () => {
-  it("accepts a well-formed page of results", () => {
-    const result = userListSchema.safeParse({
-      items: [validUser],
-      total: 1,
-      page: 1,
-      pageSize: 10,
+/**
+ * **What an Administrator may change about a person, and what is AD's.**
+ *
+ * `userAccessUpdateSchema` is a `z.strictObject` rather than a `z.object`, and
+ * the difference is the whole point: a plain object would *strip* an
+ * AD-owned field and answer 200, so a screen that tried to edit Active
+ * Directory's data would believe it had succeeded.
+ */
+describe("userAccessUpdateSchema", () => {
+  it("accepts a status change, which is the one field this platform owns", () => {
+    expect(userAccessUpdateSchema.parse({ status: "suspended" })).toEqual({
+      status: "suspended",
     });
-    expect(result.success).toBe(true);
   });
 
-  it("rejects an unknown role rather than letting it reach the UI", () => {
-    const result = userListSchema.safeParse({
-      items: [{ ...validUser, role: "superadmin" }],
-      total: 1,
-      page: 1,
-      pageSize: 10,
-    });
-    expect(result.success).toBe(false);
+  /**
+   * **FR-AUTH-02** governs group-to-role mapping "via the OLNG AD admin", and
+   * §9.1 has the Administrator configure that *mapping* rather than assign roles
+   * per user. A `roles` field here would let this screen contradict the
+   * directory it mirrors.
+   */
+  it.each(["roles", "ad_groups", "display_name", "username"])(
+    "refuses %s rather than silently dropping it",
+    (field) => {
+      const result = userAccessUpdateSchema.safeParse({
+        status: "active",
+        [field]: ["anything"],
+      });
+
+      expect(result.success).toBe(false);
+      // Named, not merely refused — a client that tries should learn why.
+      expect(JSON.stringify(result.error?.issues)).toContain(field);
+    }
+  );
+
+  it("refuses a status outside the two the platform has", () => {
+    expect(
+      userAccessUpdateSchema.safeParse({ status: "invited" }).success
+    ).toBe(false);
   });
 
-  it("rejects a response missing the pagination envelope", () => {
-    expect(userListSchema.safeParse({ items: [validUser] }).success).toBe(
-      false
-    );
+  it("refuses an empty body — there is nothing to infer", () => {
+    expect(userAccessUpdateSchema.safeParse({}).success).toBe(false);
   });
 });
 
-describe("userFormSchema", () => {
-  it("trims the name before validating length", () => {
-    const result = userFormSchema.safeParse({
-      name: "  Ada  ",
-      email: "ada@example.com",
-      role: "operator",
-      status: "invited",
-    });
-    expect(result.success).toBe(true);
-    if (result.success) expect(result.data.name).toBe("Ada");
+describe("userFiltersSchema", () => {
+  const BASE = {
+    page: 1,
+    pageSize: 10,
+    search: "",
+    role: "all",
+    status: "all",
+  };
+
+  it("accepts the initial filter state", () => {
+    expect(() => userFiltersSchema.parse(BASE)).not.toThrow();
   });
 
-  it("reports a readable message for a bad email", () => {
-    const result = userFormSchema.safeParse({
-      name: "Ada",
-      email: "not-an-email",
-      role: "operator",
-      status: "invited",
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues[0]?.message).toBe(
-        "Enter a valid email address"
-      );
-    }
+  it("accepts a base role and the all sentinel for both selects", () => {
+    expect(userFiltersSchema.parse({ ...BASE, role: "supervisor" }).role).toBe(
+      "supervisor"
+    );
+    expect(
+      userFiltersSchema.parse({ ...BASE, status: "suspended" }).status
+    ).toBe("suspended");
+  });
+
+  it("rejects a page number that could not exist", () => {
+    expect(userFiltersSchema.safeParse({ ...BASE, page: 0 }).success).toBe(
+      false
+    );
+    expect(userFiltersSchema.safeParse({ ...BASE, page: 1.5 }).success).toBe(
+      false
+    );
+  });
+
+  /**
+   * The filter select offers the five base roles; a custom role (§6) is not
+   * offered because nothing enumerates them yet — Phase 3c. The schema being
+   * closed here is deliberate and different from `userWireSchema.roles`, which
+   * must stay open so an unknown role can still be *listed*.
+   */
+  it("rejects a role the select does not offer", () => {
+    expect(
+      userFiltersSchema.safeParse({ ...BASE, role: "shutdown_coordinator" })
+        .success
+    ).toBe(false);
   });
 });

@@ -22,6 +22,7 @@ import { ROLE_LABEL } from "@/constants/roles";
 import { ROUTES } from "@/constants/routes";
 import { useSignOut } from "@/features/auth/api/mutations";
 import { useSession } from "@/features/auth/hooks/useSession";
+import { NotificationsTray } from "@/features/notifications/components/NotificationsTray";
 import { useSettingsStore, type Theme } from "@/store/settingsStore";
 
 const THEME_OPTIONS: { value: Theme; label: string; icon: typeof Sun }[] = [
@@ -66,12 +67,17 @@ const ON_BRAND_CONTROL =
  * The prototype's application top bar (`app-source.txt` 191–212): a 58px teal
  * band carrying the logo tile, the product name and the account controls.
  *
- * Two of the prototype's elements are deliberately absent, both because the
- * feature behind them does not exist in this repo yet:
- * - the global search field (196) — there is no search endpoint;
- * - the role switcher (198, `typeControl`) — the developer guide is explicit
- *   that a free role switcher is admin impersonation behind a permission gate,
- *   not a top-bar control, and the session's role comes from `GET /me`.
+ * The prototype's global search field (196) is deliberately absent — there is no
+ * search endpoint behind it.
+ *
+ * **The role switcher is not here either, and the reason has changed.** The
+ * prototype's `typeControl` (198) is a free switcher in the top bar; the
+ * developer guide is explicit that such a control is admin impersonation behind
+ * a permission gate, and that product feature is still **unbuilt**. What does
+ * exist is `DevRoleSwitcher` in the sidebar footer — **dev-only scaffolding**
+ * that replaced the `/auth/mock-adfs` account picker, gated the same way and
+ * absent from a production bundle. It is not this control and does not
+ * discharge the requirement; the session's role still comes from `GET /me`.
  *
  * The theme control is this repo's, not the prototype's: the prototype has no
  * dark mode at all, and the code quality standard requires one.
@@ -93,6 +99,14 @@ export const Header = () => {
       </Link>
 
       <div className="flex items-center gap-2">
+        {/*
+          FR-NOT-01 in the shell rather than on a screen: a notification about an
+          overdue action is only useful if it reaches somebody who is looking at
+          something else. Rendered only for a signed-in session, because the tray
+          fetches on mount and the sign-in surface has no session to fetch for.
+        */}
+        {session ? <NotificationsTray /> : null}
+
         <DropdownMenu>
           <DropdownMenuTrigger
             render={

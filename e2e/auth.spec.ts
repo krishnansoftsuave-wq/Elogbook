@@ -1,10 +1,15 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * The sign-in chain, end to end: `/auth/login` → `/auth/mock-adfs` →
- * `/auth/callback` → the route the session's permissions actually open.
+ * The sign-in chain, end to end: `/auth/login` → `/auth/callback` → the route
+ * the session's permissions actually open.
  *
- * The mock AD screen only exists outside a production build (both pages call
+ * **The middle step is gone.** `/auth/mock-adfs` was an invented "Choose an
+ * account" screen; the button now redirects straight to the reply URL as the
+ * default Operator, and choosing another identity moved to `DevRoleSwitcher` in
+ * the sidebar footer — dev-only scaffolding, gated the same way.
+ *
+ * `/auth/callback` only exists outside a production build (it calls
  * `notFound()` when `NODE_ENV === "production"`), and `playwright.config.ts`
  * runs `npm run dev`, so it is present in the default run. Pointing
  * `PLAYWRIGHT_BASE_URL` at a production build makes the flow specs 404 —
@@ -17,6 +22,9 @@ import { expect, test, type Page } from "@playwright/test";
 
 const SSO_BUTTON = "Sign in with Oman LNG Account";
 
+/** Who the sign-in button signs you in as; mirrors `DEFAULT_MOCK_ACCOUNT`. */
+const DEFAULT_ACCOUNT = "Said Al-Busaidi";
+
 /** §5's refusal, verbatim — the same paragraph `ACCESS_DENIED_MESSAGE` holds. */
 const DENY_MESSAGE =
   "Access denied: your AD account is not mapped to any platform role. Contact an administrator to request access.";
@@ -24,18 +32,42 @@ const DENY_MESSAGE =
 /** Mirrors `playwright.config.ts`, so "did we leave the origin" has an answer. */
 const BASE_ORIGIN = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 
-/** Walks the whole redirect chain the way a person would. */
+/**
+ * Walks the whole redirect chain the way a person would.
+ *
+ * The button always signs in as the Operator, so becoming anybody else is a
+ * second step through the sidebar switcher — which is exactly what a person
+ * does now. `signIn` alone covers the default; `switchTo` covers the rest.
+ */
+const signIn = async (page: Page, from = "/auth/login") => {
+  await page.goto(from);
+  await page.getByRole("button", { name: SSO_BUTTON }).click();
+};
+
+/** The dev-only role switcher at the foot of the sidebar. */
+const switchTo = async (page: Page, displayName: string) => {
+  await page.getByRole("button", { name: /Switch role/ }).click();
+  await page
+    .getByRole("menuitemradio", { name: new RegExp(displayName) })
+    .click();
+};
+
+/**
+ * Sign in, then become somebody else. Waits for the default landing first:
+ * the switcher lives in the sidebar, so it does not exist until the Operator's
+ * session has actually rendered a protected screen.
+ */
 const signInAs = async (
   page: Page,
   displayName: string,
   from = "/auth/login"
 ) => {
-  await page.goto(from);
-  await page.getByRole("button", { name: SSO_BUTTON }).click();
-  await expect(
-    page.getByRole("heading", { name: "Choose an account" })
-  ).toBeVisible();
-  await page.getByRole("button", { name: new RegExp(displayName) }).click();
+  await signIn(page, from);
+
+  if (displayName === DEFAULT_ACCOUNT) return;
+
+  await page.waitForURL(/\/dashboard$/, { timeout: 30_000 });
+  await switchTo(page, displayName);
 };
 
 const horizontalOverflow = (page: Page) =>
@@ -112,15 +144,20 @@ test.describe("authentication", () => {
     await expect(page).toHaveURL(/returnTo=%2Flogbook%2Fadd/);
   });
 
-  test("an operator signs in and lands in the logbook", async ({ page }) => {
+  /**
+   * **FR-AUTH-01** — "map to a role and redirect to a role-based dashboard."
+   *
+   * The landing route has moved twice. `/logbook` was the entries scaffold,
+   * whose endpoint has no mock handler, so signing in showed a connection-error
+   * toast. Phase 1a used `/actions` as an acknowledged stand-in — a
+   * pending-actions list is one quarter of what FR-HOME-01 calls a dashboard.
+   * Phase 1b is the requirement actually met.
+   */
+  test("an operator signs in and lands on the dashboard", async ({ page }) => {
     await signInAs(page, "Said Al-Busaidi");
 
-    await expect(page).toHaveURL(/\/logbook$/);
-    // `exact` matters: the top bar's "AI E-Logbook Platform" brand link
-    // contains "Logbook", so a substring match finds two links.
-    await expect(
-      page.getByRole("link", { name: "Logbook", exact: true })
-    ).toBeVisible();
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
   });
 
   test("an administrator signs in and lands in the admin tree", async ({
@@ -138,7 +175,6 @@ test.describe("authentication", () => {
     await expect(page).toHaveURL(/returnTo=%2Flogbook%2Fadd/);
 
     await page.getByRole("button", { name: SSO_BUTTON }).click();
-    await page.getByRole("button", { name: /Said Al-Busaidi/ }).click();
 
     await expect(page).toHaveURL(/\/logbook\/add$/);
   });
@@ -147,22 +183,36 @@ test.describe("authentication", () => {
     page,
   }) => {
     await signInAs(page, "Said Al-Busaidi");
-    await expect(page).toHaveURL(/\/logbook$/);
+    await expect(page).toHaveURL(/\/dashboard$/);
 
     await page.goto("/admin/users");
 
     // Never `/unauthorized`: a wrong-permission visit goes to where the session
     // does belong. Hiding the nav item is not what stops them (FR-ADM-03).
-    await expect(page).toHaveURL(/\/logbook$/);
+    //
+    // `waitForURL` with headroom rather than a 5s `toHaveURL`: the redirect is
+    // client-side and cannot run until the route has compiled and hydrated,
+    // which on a cold dev server is the slowest step in this spec.
+    await page.waitForURL(/\/dashboard$/, { timeout: 30_000 });
     await expect(page.getByRole("link", { name: "Users" })).toHaveCount(0);
   });
 
+  /**
+   * §5's deny, and the reason the switcher lists an account that cannot sign in.
+   *
+   * Hamed Al-Siyabi is in `OLNG-CONTRACTORS`, which maps to nothing: "an
+   * unmapped account never gets in with zero permissions — it's refused
+   * outright." `POST /dev/token` answers **422** before minting, which is one
+   * step earlier than real AD FS will refuse him, and the callback owns the
+   * screen either way.
+   *
+   * This used to be reached through the account picker. Driving it through the
+   * switcher is what proves the deny path is still reachable **from the UI**
+   * rather than only by typing a callback URL.
+   */
   test("an AD account mapped to no platform role is refused outright", async ({
     page,
   }) => {
-    // Hamed Al-Siyabi is in `OLNG-CONTRACTORS`, which maps to nothing. §5:
-    // "an unmapped account never gets in with zero permissions — it's refused
-    // outright."
     await signInAs(page, "Hamed Al-Siyabi");
 
     await expect(
@@ -172,6 +222,56 @@ test.describe("authentication", () => {
     await expect(
       page.getByRole("link", { name: "Back to sign in" })
     ).toBeVisible();
+  });
+
+  /**
+   * **FR-AUTH-03** — "where a user holds multiple roles, grant the highest
+   * access with both roles' permissions combined." Maryam is in the Operator
+   * *and* Superintendent groups, and the switcher is how that union gets driven
+   * through a real `GET /me`.
+   */
+  test("switching to a multi-group account resolves both roles", async ({
+    page,
+  }) => {
+    await signInAs(page, "Maryam Al-Zadjali");
+
+    await page.waitForURL(/\/dashboard$/, { timeout: 30_000 });
+    // The header prints the session's roles, joined — the union, not one of them.
+    await expect(page.getByText(/Operator.*Management/)).toBeVisible();
+  });
+
+  /**
+   * Switching lands on the new session's own home rather than bouncing off the
+   * screen the previous role was looking at. The Operator's dashboard is closed
+   * to an Administrator's permissions in the other direction, so this is the
+   * assertion that `homeForSession` is doing the routing.
+   */
+  test("switching role lands on the new role's home, not a bounce", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.waitForURL(/\/dashboard$/, { timeout: 30_000 });
+
+    await switchTo(page, "Yousuf Al-Rawahi");
+
+    // Super User holds `user:read` and no operational permission at all, so
+    // `/dashboard` is not reachable and `/admin/users` is the only home.
+    await page.waitForURL(/\/admin\/users$/, { timeout: 30_000 });
+  });
+
+  test("the switcher announces which identity is current", async ({ page }) => {
+    await signIn(page);
+    await page.waitForURL(/\/dashboard$/, { timeout: 30_000 });
+
+    await page.getByRole("button", { name: /Switch role/ }).click();
+
+    // A checked state a screen reader can read, not just a tick glyph.
+    await expect(
+      page.getByRole("menuitemradio", { name: /Said Al-Busaidi/ })
+    ).toHaveAttribute("aria-checked", "true");
+    await expect(
+      page.getByRole("menuitemradio", { name: /Noura Al-Kindi/ })
+    ).toHaveAttribute("aria-checked", "false");
   });
 
   test("a 401 from /me is refused on screen, not left spinning", async ({
@@ -233,7 +333,7 @@ test.describe("authentication", () => {
       `/auth/login?returnTo=${encodeURIComponent("//evil.com")}`
     );
 
-    await expect(page).toHaveURL(/\/logbook$/);
+    await expect(page).toHaveURL(/\/dashboard$/);
     expect(new URL(page.url()).origin).toBe(BASE_ORIGIN);
   });
 
@@ -248,7 +348,7 @@ test.describe("authentication", () => {
       `/auth/login?returnTo=${encodeURIComponent("/\\evil.com")}`
     );
 
-    await expect(page).toHaveURL(/\/logbook$/);
+    await expect(page).toHaveURL(/\/dashboard$/);
     expect(new URL(page.url()).origin).toBe(BASE_ORIGIN);
   });
 
@@ -256,14 +356,14 @@ test.describe("authentication", () => {
     page,
   }) => {
     await signInAs(page, "Said Al-Busaidi");
-    await expect(page).toHaveURL(/\/logbook$/);
+    await expect(page).toHaveURL(/\/dashboard$/);
 
     await page.getByRole("button", { name: "Account menu" }).click();
     await page.getByRole("menuitem", { name: "Sign out" }).click();
 
     await expect(page).toHaveURL(/\/auth\/login/);
 
-    await page.goto("/logbook");
+    await page.goto("/actions");
     await expect(page).toHaveURL(/\/auth\/login/);
   });
 
@@ -289,7 +389,7 @@ test.describe("authentication", () => {
     ).toHaveCount(1);
 
     await signInAs(page, "Said Al-Busaidi");
-    await expect(page).toHaveURL(/\/logbook$/);
+    await expect(page).toHaveURL(/\/dashboard$/);
     await expect(
       page.getByRole("link", { name: /AI E-Logbook Platform/ })
     ).toBeVisible();
@@ -346,18 +446,35 @@ test.describe("responsive sign-in surface", () => {
       await expect.poll(() => horizontalOverflow(page)).toBeLessThanOrEqual(0);
     });
 
-    test(`the mock AD FS screen fits at ${breakpoint.name}`, async ({
+    /**
+     * Replaces the mock AD FS screen's viewport case — that screen is gone, and
+     * its job moved into the sidebar footer.
+     *
+     * **The switcher only exists at `lg` and above**, because `Sidebar` is
+     * `max-lg:hidden` and this repo ships no mobile navigation at all (see the
+     * signed-in shell case below). So this asserts presence at 1440 and
+     * *absence* at 375/768 — the honest state, rather than a test that would
+     * fail by design at two of the three breakpoints.
+     */
+    test(`the role switcher is where the rail is at ${breakpoint.name}`, async ({
       page,
     }) => {
       await page.setViewportSize(breakpoint);
-      await page.goto("/auth/mock-adfs");
+      await signIn(page);
+      await page.waitForURL(/\/dashboard$/, { timeout: 30_000 });
 
-      await expect(
-        page.getByRole("heading", { name: "Choose an account" })
-      ).toBeVisible();
-      await expect(
-        page.getByRole("button", { name: /Said Al-Busaidi/ })
-      ).toBeVisible();
+      const trigger = page.getByRole("button", { name: /Switch role/ });
+      if (breakpoint.width >= 1024) {
+        await expect(trigger).toBeVisible();
+        await trigger.click();
+        // The upward menu at this width, with no page scroll behind it.
+        await expect(
+          page.getByRole("menuitemradio", { name: /Noura Al-Kindi/ })
+        ).toBeVisible();
+      } else {
+        await expect(trigger).toHaveCount(0);
+      }
+
       await expect.poll(() => horizontalOverflow(page)).toBeLessThanOrEqual(0);
     });
 
@@ -395,7 +512,7 @@ test.describe("responsive sign-in surface", () => {
       await page.setViewportSize(breakpoint);
       await signInAs(page, "Said Al-Busaidi");
 
-      await expect(page).toHaveURL(/\/logbook$/);
+      await expect(page).toHaveURL(/\/dashboard$/);
       await expect(page.getByRole("main")).toBeVisible();
       await expect.poll(() => horizontalOverflow(page)).toBeLessThanOrEqual(0);
     });
@@ -444,7 +561,6 @@ test.describe("sign-in landmarks", () => {
     // screens, so all four screens' content sat outside any region.
     for (const path of [
       "/auth/login",
-      "/auth/mock-adfs",
       "/auth/access-denied",
       "/auth/callback?account=hamed.alsiyabi",
     ]) {

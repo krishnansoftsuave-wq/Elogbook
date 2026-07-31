@@ -18,9 +18,15 @@ interface CallbackPageProps {
  * URL and `account` becomes `code` + `state`; the route itself does not move,
  * which is the point of giving the mock a redirect shape.
  *
- * Gated to non-production for the same reason as `/auth/mock-adfs`: today it
- * calls `POST /dev/token`, which §4 says "will 404 the moment real AD FS is
- * wired in". `NODE_ENV` is a build-time literal, so the branch folds away.
+ * **It is now the first stop, not the second.** `/auth/mock-adfs` — an invented
+ * "Choose an account" screen — used to sit in front of it; the sign-in button
+ * redirects straight here with the default account, and `DevRoleSwitcher` in the
+ * sidebar footer sends people back through with a different `account` to switch
+ * identity. Both are the same one-line change at cutover.
+ *
+ * Gated to non-production because it calls `POST /dev/token`, which §4 says
+ * "will 404 the moment real AD FS is wired in". `NODE_ENV` is a build-time
+ * literal, so the branch folds away.
  */
 export default async function CallbackPage({
   searchParams,

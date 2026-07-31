@@ -46,3 +46,22 @@ export const ROLE_LABEL: Record<Role, string> = {
   [ROLES.ADMINISTRATOR]: "Administrator",
   [ROLES.SUPER_USER]: "Super User",
 };
+
+/**
+ * Widening `ROLE_LABEL` once, here, so callers never have to narrow a `string`
+ * back to `Role` to read it.
+ */
+const ROLE_LABEL_LOOKUP: Record<string, string> = ROLE_LABEL;
+
+/**
+ * The defensive lookup every consumer of `session.roles` needs.
+ *
+ * `roles` arrives from `GET /me` as an open `string[]` on purpose — §6 lets an
+ * Administrator create custom roles this build has never heard of, and
+ * `meDataSchema` documents why validating them against a closed enum would lock
+ * that user out. The consequence is that indexing `ROLE_LABEL` directly with a
+ * session role is unsound: the key may genuinely not be there. This returns the
+ * raw value in that case, which is a usable label and never `undefined`.
+ */
+export const roleLabel = (role: string): string =>
+  ROLE_LABEL_LOOKUP[role] ?? role;

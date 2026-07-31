@@ -13,8 +13,15 @@ import { useAuthStore } from "@/store/authStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { renderWithProviders } from "@/test/utils";
 
+/**
+ * `useRouter` is here for `DevRoleSwitcher`, which the rail now renders in its
+ * footer — dev-only scaffolding that replaced the `/auth/mock-adfs` account
+ * picker. Its own behaviour is covered in `DevRoleSwitcher.test.tsx`; this file
+ * only needs it not to throw.
+ */
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/logbook",
+  usePathname: () => "/actions",
+  useRouter: () => ({ push: vi.fn() }),
 }));
 
 const realAdapter = api.defaults.adapter;
@@ -70,13 +77,13 @@ describe("Sidebar", () => {
     useAuthStore.setState({ token: null, expiresAt: null });
   });
 
-  it("shows only the logbook to a session holding shift:read", async () => {
-    signInWith(["shift:read", "summary:read", "action:write"]);
+  it("shows only pending actions to a session holding action:read", async () => {
+    signInWith(["shift:read", "summary:read", "action:read"]);
 
     renderWithProviders(<Sidebar />);
 
     expect(
-      await screen.findByRole("link", { name: "Logbook" })
+      await screen.findByRole("link", { name: "Pending actions" })
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Users" })
@@ -92,7 +99,7 @@ describe("Sidebar", () => {
       await screen.findByRole("link", { name: "Users" })
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: "Logbook" })
+      screen.queryByRole("link", { name: "Pending actions" })
     ).not.toBeInTheDocument();
   });
 
@@ -102,7 +109,7 @@ describe("Sidebar", () => {
     renderWithProviders(<Sidebar />);
 
     expect(
-      await screen.findByRole("link", { name: "Logbook" })
+      await screen.findByRole("link", { name: "Pending actions" })
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Users" })).toBeInTheDocument();
   });
@@ -145,8 +152,10 @@ describe("Sidebar", () => {
 
     renderWithProviders(<Sidebar />);
 
-    const logbook = await screen.findByRole("link", { name: "Logbook" });
-    expect(logbook).toHaveTextContent("Logbook");
+    const actions = await screen.findByRole("link", {
+      name: "Pending actions",
+    });
+    expect(actions).toHaveTextContent("Pending actions");
     expect(screen.getByRole("link", { name: "Users" })).toHaveTextContent(
       "Users"
     );
@@ -162,7 +171,7 @@ describe("Sidebar", () => {
       expect(useAuthStore.getState().token).toBe("token-1")
     );
     expect(
-      screen.queryByRole("link", { name: "Logbook" })
+      screen.queryByRole("link", { name: "Pending actions" })
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Users" })

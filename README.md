@@ -61,14 +61,29 @@ computation (`mocks/shifts/current.ts`) ship anyway, because §7 specifies it an
 because without it nothing can exercise §3's `403` rule end to end.
 
 The shift arithmetic is the part worth knowing: 12-hour shifts opening at 06:00
-UTC with a 15-minute overlap (§7, BRD FR-HOME-04), so **02:00 on the 30th
+**plant time** with a 15-minute overlap (§7, FR-HOME-03), so **05:59 on the 30th
 belongs to the night shift that opened at 18:00 on the 29th** — `20260729-N`,
 not `20260730-N`. `mocks/shifts/current.test.ts` pins every boundary.
 
+Two things about that sentence changed in Phase 3b, and both were defects:
+
+- **Plant time, not UTC.** `Asia/Muscat` is GST (UTC+4, no DST), and FR-HOME-03's
+  "06:00" is an Omani control room's clock. Computing at 06:00 UTC and rendering
+  through `formatPlantTime` put *"Day shift · 10:00–22:00 GST"* on the dashboard
+  for three phases. The wire value is still a UTC instant with a `+00:00` offset,
+  as §7 shows; only the arithmetic moved. See `mocks/shifts/constants.ts`.
+- **The boundary is configurable and now actually configured.**
+  `currentShift(at, config)` takes the stored `shiftConfig`, so `/admin/shift-config`
+  moves the dashboard banner, the window a generated summary covers and the shift
+  id on an assistant citation — FR-HOME-03's *"report/summary generation aligns to
+  them"*. It was stored and ignored before.
+
 ### Test accounts
 
-Sign in as any of these. Passwords do not exist; AD group membership is the
-whole identity.
+The sign-in button always signs you in as **`said.albusaidi`** (the Operator).
+To become anybody else, use the **role switcher at the foot of the sidebar** —
+dev-only scaffolding that replaced the old account picker. Passwords do not
+exist; AD group membership is the whole identity.
 
 | Username | Groups | Resolves to |
 | -------- | ------ | ----------- |
@@ -81,11 +96,16 @@ whole identity.
 | `hamed.alsiyabi` | `OLNG-CONTRACTORS` | **nothing** — `/me` answers `401` "not mapped to any platform role" |
 
 > `hamed.alsiyabi` cannot get a token from `POST /dev/token`: §4 rejects any
-> group outside the roles table with a `422` before minting. Choosing it in the
-> mock AD FS screen therefore fails one step earlier than it will
-> against real AD FS, which issues a token and lets `GET /me` answer the `401`.
+> group outside the roles table with a `422` before minting. Choosing him in the
+> role switcher therefore fails one step earlier than it will against real AD
+> FS, which issues a token and lets `GET /me` answer the `401`.
 > `/auth/callback` treats both as the same refusal and shows the same screen.
 > Mint a token directly with `mintMockToken()` to drive the `401` shape itself.
+>
+> He is listed in the switcher **on purpose**: §5's deny path has to stay
+> reachable by clicking, not only by typing a callback URL. The `422` is thrown
+> before the token lands, so a refused switch leaves the session you were
+> already in intact.
 
 ## Sign-in screens
 
@@ -97,14 +117,38 @@ cutover is mechanical:
 
 | Route | What it is | Production |
 | ----- | ---------- | ---------- |
-| `/auth/login` | The prototype's welcome screen and one "Sign in with Oman LNG Account" button. | ships |
-| `/auth/mock-adfs` | **Dev-only, invented.** An account picker standing in for the AD FS sign-in page. Banner-labelled as a mock; it is in neither the BRD nor the prototype. | `404` |
+| `/auth/login` | The prototype's welcome screen and one "Sign in with Oman LNG Account" button, which redirects straight to the callback as the default account. | ships |
 | `/auth/callback` | Where the chain lands: exchanges for a token, calls `GET /me`, then forwards to `safeReturnTo(returnTo)` or `homeForSession(permissions)`. | `404` |
 | `/auth/access-denied` | §5's deny screen, verbatim. Ungated — it is `homeForSession`'s fallback, so it has to answer without a session. | ships |
 
 At cutover, `/auth/login`'s button points at the real AD FS authorize URL and
 AD FS lands on `/auth/callback` with `code` + `state` instead of `account`. The
 route does not move; only the exchange call inside it does.
+
+### Switching identity — `DevRoleSwitcher`
+
+An invented `/auth/mock-adfs` "Choose an account" screen used to sit between the
+button and the callback. It is gone. The prototype puts a **role control at the
+foot of the sidebar** (`app-source.txt` 246–276) and that is where choosing an
+identity now lives: an avatar, the current role, and a menu that opens upward
+listing every mock account with `aria-checked` on the current one.
+
+Selecting one navigates back through `/auth/callback?account=…`, so a switch is
+the **same** exchange a fresh sign-in runs — token minted, cache cleared before
+it lands, `GET /me` re-read, then `homeForSession` so a role that cannot reach
+the current screen never bounces off it. Nothing about the session is cached in
+Zustand; `GET /me` stays the source of truth.
+
+Two things to know:
+
+- **It does not ship.** `Sidebar` guards it with `process.env.NODE_ENV !==
+  "production"`, which folds at build time and lets the module be tree-shaken;
+  the component repeats the test as a second line of defence. Verified against a
+  production build — none of its strings appear in `.next/static/chunks`.
+- **It is not the product's role switcher.** `AGENTS.md` and `SCREENS.md` both
+  say a free switcher is admin impersonation behind a permission gate. That
+  control is **unbuilt**; this is scaffolding, and it only exists at `lg` and
+  above because `Sidebar` is `max-lg:hidden`.
 
 The prototype draws the sign-in surface in **two** shapes, and both live in
 `features/auth/components/AuthScreen.tsx`:
@@ -152,6 +196,92 @@ call. `src/lib/api-client.ts` instead ends the session on a `401` and leaves a
 request and no replay. If a refresh endpoint ever lands, that is the moment to
 build what `AGENTS.md` describes.
 
+## Mock operational data
+
+The auth mock above proved the session pipeline. The same machinery now serves
+the prototype's operational entities, so every screen can be built against the
+real architecture — `API_ENDPOINTS` → `api` → `schema.parse()` → `useQuery` —
+before the backend exists. When it lands, only the base URL changes.
+
+| Endpoint | Verb | Permission | Requirement |
+| -------- | ---- | ---------- | ----------- |
+| `/actions` | `GET` | `action:read` | §7.6 |
+| `/actions/:id` | `GET` | `action:read` | §7.6, audited (FR-ADM-05) |
+| `/actions/:id/status` | `PATCH` | `action:write` + workflow | FR-PA-04, **FR-PA-05** |
+| `/actions/:id/owner` | `PUT` | `action:assign` + workflow | **FR-PA-05**, §6.2(a) |
+| `/actions/:id/comments` | `GET` `POST` | `action:read` (+ toggle for Operators) | FR-SUM-08, §6.1 |
+| `/suggestions` | `GET` | `action:read` | FR-PA-01 |
+| `/suggestions/:id/confirm` | `POST` | `action:confirm` | FR-PA-02 |
+| `/summaries` | `GET` `POST` | `summary:read` | FR-SUM-02, **FR-SUM-04** |
+| `/summaries/:id` | `GET` | `summary:read` | FR-SUM-01, FR-SUM-06 |
+| `/summaries/:id/comments` | `POST` | `summary:read` (+ toggle for Operators) | FR-SUM-08 |
+| `/notifications` | `GET` | authenticated | FR-NOT-01 |
+| `/notifications/:id/read` | `POST` | authenticated | FR-NOT-01, NFR-12 |
+| `/assistant/query` | `POST` | `assistant:query` | FR-AI-01/03/05/06 |
+| `/decisions` | `GET` `POST` | `analytics:read` | §6.3 — *no FR-ID exists* |
+| `/decisions/:id` `…/status` `…/comments` | `GET` `PATCH` `POST` | `analytics:read` (+ workflow) | §6.3(a)/(b) |
+| `/requests*` | — | wildcard / own | ⚠️ **no BRD basis** — see below |
+| `/users` | `GET` | `user:read` | FR-ADM-01, §6.5 |
+| `/users/:username` | `GET` `PATCH` | read: `user:read` · write: `*` | FR-ADM-01, FR-AUTH-04 |
+| `/admin/workflows` | `GET` `PATCH` | read: any · write: **per switch** | FR-PA-05, FR-SUM-08, FR-ADM-06, FR-DASH-03 |
+| `/admin/shift-config` | `GET` `PUT` | read: any · write: `*` | FR-HOME-03 |
+| `/admin/notification-permissions[/:username]` | `GET` `PUT` | `*` | FR-NOT-01 |
+| `/audit` | `GET` **only** | `*` | FR-ADM-05, FR-OBS-01, §9.3 |
+| `/dashboards/widgets[/:id]` | `GET` `PUT` | read: any · write: `dashboard:configure` | FR-ADM-06, FR-DASH-01 |
+
+Eight things worth knowing before reading the code:
+
+- **The user directory mirrors Active Directory: there is no `POST /users` and
+  no `DELETE`.** FR-ADM-01 asks for "create, modify, remove", but FR-AUTH-02
+  makes AD the system of record and `resolveSession` derives roles from the AD
+  groups on the token — so an account minted here would carry none and could
+  never sign in. Creating and removing people are AD-side actions; FR-ADM-01's
+  create/remove is reported unmet rather than faked. `PATCH /users/:username`
+  takes **`status` only**, and is a `z.strictObject` so a body carrying `roles`
+  or `ad_groups` is a `422` naming the field rather than a silent no-op.
+  ⚠️ Suspension is recorded and audited but **not yet enforced** — nothing in
+  the auth path reads the collection.
+- **Writes persist.** `src/mocks/store.ts` holds a mutable store pinned to
+  `globalThis`, so `invalidateQueries` → refetch returns the value you just
+  wrote — the same sequence the real API will drive. Without it, mutation hooks
+  would have to be written in a way that gets deleted at cutover. A `next dev`
+  restart reseeds; nothing touches disk. **Any test that writes must call
+  `resetMockStore()` in `beforeEach`.**
+- **The workflow toggles seed OFF, and who may flip one is decided per switch.**
+  FR-PA-05 and §6.2(a) make assignment and tracking opt-in, and §6.3(a) makes
+  decisions record-only, so `/actions/:id/status`, `/actions/:id/owner` and
+  `/decisions/:id/status` answer `403` until somebody flips the switch. The
+  prototype's own admin cards print `Default: OFF`; only its seed `state`
+  disagreed. Writing is **not** one permission for all four: §6.5, the §4 role
+  table, FR-ADM-06 and FR-DASH-03 all give the **Super User** control of
+  *"access to comments and the decision workflow"*, while FR-PA-05 reserves
+  action assignment to the *"Administrator"*. `WORKFLOW_PERMISSION` in
+  `features/admin/schemas.ts` is that map, and both the handler and the cards
+  read it.
+- **Entity field names are PROVISIONAL.** They are derived from the prototype's
+  mock `state` (`app-source.txt` 36–123), not from a backend contract, and every
+  `schemas.ts` says so. The §3 **envelope** is not provisional.
+- **The audit trail fills up as you use the product.** Sixteen handlers call
+  `recordAudit`, including `POST /dev/token` — click through a demo, then open
+  `/admin/audit`. Two of FR-ADM-05's five named categories have no emitter and
+  are reported unmet rather than faked: `EXPORT_REPORT` (no export endpoint
+  exists anywhere in this build, so **FR-REP-06** is not met) and `LOGOUT`
+  (`authentication_flow.md` §9 — auth is stateless and there is no logout
+  endpoint to audit). A **failed** sign-in is reproducible: sign in as
+  `hamed.alsiyabi`, who exists in AD and is entitled to nothing.
+- **Comment access is gated on a permission, never on a role name.** Both comment
+  endpoints ask `summary:comment` **or** the Administrator toggle. An earlier
+  role-shaped gate ("are all this session's roles `operator`?") failed *open* for
+  the multi-role fixture account, and BRD §4 warns the role list is not final —
+  so any gate keyed on a closed set of names widens with every role added.
+- **Writes are idempotent (NFR-12).** Regenerating a shift's summary replaces it
+  rather than minting a colliding id; confirming a suggestion twice records one
+  entry, keyed by `suggestion_id`; a read receipt is scoped to its addressee.
+- **`/requests` has no BRD basis at all.** It is in the prototype and in no
+  functional requirement, persona flow or scope table. Owner decision
+  2026-07-31: contract only, **no screens**, no FR-ID cited, pending client
+  confirmation.
+
 ### Cutover
 
 The mock is deliberately easy to remove — that is the design constraint it was
@@ -159,9 +289,11 @@ built under:
 
 1. Repoint `NEXT_PUBLIC_API_BASE_URL` at the real backend
    (`http://localhost:8000/api/v1`) and **rebuild**.
-2. Delete `src/app/api/`, `src/mocks/`, `src/app/auth/mock-adfs/` and
-   `src/features/auth/components/MockAdfsAccountPicker.tsx`. `features/shifts/
-   schemas.ts` **stays** — it is the response contract, not a mock.
+2. Delete `src/app/api/`, `src/mocks/` and
+   `src/features/auth/components/DevRoleSwitcher.tsx` (plus its call site in
+   `Sidebar.tsx`, which is one guarded line). Every
+   `features/*/schemas.ts` **stays** — they are the response contracts, not
+   mocks, which is why `src/mocks/` imports *from* them and never the reverse.
 3. In `src/features/auth/components/CallbackExchange.tsx`, replace the
    `/dev/token` exchange with the real AD FS code exchange and drop the
    `findMockAccount` lookup and the stub-only `422` branch.
@@ -240,8 +372,28 @@ sidebar filter, the root redirect and the edge proxy all read it:
 | Route subtree | Requires |
 | ------------- | -------- |
 | `/admin/**` | `user:read` |
+| `/admin/workflows/**` | `user:read` + `access:control` |
+| `/admin/audit/**` | `*` |
+| `/admin/shift-config/**` | `*` |
+| `/dashboard/**` | `shift:read` |
+| `/notifications/**` | `shift:read` |
 | `/logbook/**` | `shift:read` |
+| `/actions/**` | `shift:read` + `action:read` |
+| `/summaries/**` | `shift:read` + `summary:read` |
+| `/assistant/**` | `shift:read` + `assistant:query` |
 | everything else | nothing |
+
+Two rules that table encodes, both learned from bugs:
+
+- **The longest matching prefix wins.** `/admin/workflows` is the first nested
+  entry. It requires `access:control` — the permission §6 grants the Super User
+  and, until Phase 3a, the only one of theirs that gated nothing anywhere. It is
+  *not* the wildcard: an earlier build made that mistake, quoting §6.5's fifth
+  bullet ("Can view users") while its fourth grants exactly this screen.
+- **A policy records a route's *effective* requirement**, its own plus every
+  ancestor guard's. `homeForSession`, the sidebar filter and the edge proxy all
+  answer from this table and none of them can see a layout, so an entry listing
+  only the leaf permission produced a live infinite redirect.
 
 > ⚠️ **This mapping is provisional.** The contract lists the permissions and says
 > to gate on them, but neither it nor the BRD says which of *this repo's* routes
@@ -293,6 +445,14 @@ Run `npm run verify` before opening a PR.
 
 Playwright needs its browser once per machine: `npx playwright install chromium`.
 
+**The e2e suite runs on one worker**, and that is deliberate — every spec talks
+to the same `next dev` process, and `src/mocks/store.ts` pins its state to
+`globalThis`, so parallel spec files are not isolated from one another. Two files
+asserting opposite states of one workflow toggle, or resetting the store while
+another is mid-write, produce failures that look like real regressions and are
+not. `playwright.config.ts` records the detail. Expect ~6 minutes for the full
+suite; a single file is seconds.
+
 [`docs/CI-CD-COMMANDS.md`](./docs/CI-CD-COMMANDS.md) is the full command
 reference for pipeline authoring — install, env vars, gates, and the three gaps
 `npm run verify` does not cover. End-to-end tests are out of its scope.
@@ -300,7 +460,7 @@ reference for pipeline authoring — install, env vars, gates, and the three gap
 ## Stack
 
 Next.js 16 (App Router) · TypeScript 5 strict · TanStack Query v5 · Zustand ·
-Axios · Zod · Tailwind CSS 4 + SCSS Modules · shadcn/ui (Base UI) ·
+Axios · Zod · Tailwind CSS 4 (sole styling approach) · shadcn/ui (Base UI) ·
 TanStack Table v8 · React Hook Form · Sonner · Vitest + Playwright
 
 ## Layout
@@ -312,14 +472,19 @@ src/
 ├── components/   # ui/ (generated shadcn), data-table/, layout/
 ├── store/        # authStore, settingsStore — nothing else
 ├── lib/          # api-client, api-error, query-client, zod, auth/
-├── mocks/        # the mock backend's logic — delete with src/app/api at cutover
+├── mocks/        # the mock backend — store.ts, handler.ts, data/; deleted at cutover
 ├── constants/    # api.ts, roles.ts, permissions.ts, routes.ts
-├── types/        # shared cross-feature types
+├── types/        # shared cross-feature types (actor.ts, operations.ts)
 └── proxy.ts      # edge auth check (renamed from middleware.ts in Next 16)
 ```
 
 `src/features/users` is the reference implementation — copy its shape when
 adding a feature.
+
+Feature folders carrying a contract but no UI yet: `actions`, `summaries`,
+`notifications`, `assistant`, `decisions`, `requests`, `admin`, `audit`,
+`dashboards`. Each holds the `schemas.ts` its screens will consume; `api/` and
+`components/` arrive with the screens.
 
 ## Requirements
 

@@ -75,6 +75,21 @@ export type PaginationParams = z.infer<typeof paginationParamsSchema>;
  */
 export const fieldErrorsFromZod = (error: z.ZodError): Record<string, string> =>
   error.issues.reduce<Record<string, string>>((acc, issue) => {
+    /*
+      A `z.strictObject` rejects an unknown key with a **root-level** issue: the
+      offending names live on `issue.keys` and `issue.path` is empty. Reading
+      the path alone therefore dropped it, and the handler answered 422 with
+      `details: {}` — telling a client its request was invalid without saying
+      which field. `userAccessUpdateSchema` is strict precisely so that somebody
+      trying to edit Active Directory's data is told so by name.
+    */
+    if (issue.code === "unrecognized_keys") {
+      for (const key of issue.keys) {
+        if (!acc[key]) acc[key] = issue.message;
+      }
+      return acc;
+    }
+
     const path = issue.path.join(".");
     if (path && !acc[path]) acc[path] = issue.message;
     return acc;

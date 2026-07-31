@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ROUTES } from "@/constants/routes";
 import { SignInPanel } from "@/features/auth/components/SignInPanel";
+import { DEFAULT_MOCK_ACCOUNT } from "@/mocks/auth/directory";
 import { renderWithProviders } from "@/test/utils";
 
 const { push } = vi.hoisted(() => ({ push: vi.fn() }));
@@ -42,14 +43,21 @@ describe("SignInPanel", () => {
     expect(screen.getAllByRole("heading")).toHaveLength(1);
   });
 
-  it("hands off to the identity provider", async () => {
+  /**
+   * Straight to the reply URL, with no account picker in between. That screen
+   * was invented — in neither the BRD nor the prototype — and choosing an
+   * identity moved to `DevRoleSwitcher` in the sidebar footer.
+   */
+  it("hands off to the identity provider as the default account", async () => {
     renderWithProviders(<SignInPanel />);
 
     await userEvent.click(
       screen.getByRole("button", { name: "Sign in with Oman LNG Account" })
     );
 
-    expect(push).toHaveBeenCalledWith(ROUTES.MOCK_ADFS);
+    expect(push).toHaveBeenCalledWith(
+      `${ROUTES.CALLBACK}?account=${DEFAULT_MOCK_ACCOUNT}`
+    );
   });
 
   it("carries the route the visitor was trying to reach", async () => {
@@ -59,8 +67,10 @@ describe("SignInPanel", () => {
       screen.getByRole("button", { name: "Sign in with Oman LNG Account" })
     );
 
+    // `URLSearchParams` encodes the path, so this is the literal target rather
+    // than a template that could disagree with the component's encoding.
     expect(push).toHaveBeenCalledWith(
-      `${ROUTES.MOCK_ADFS}?returnTo=${encodeURIComponent("/logbook/add")}`
+      `${ROUTES.CALLBACK}?account=${DEFAULT_MOCK_ACCOUNT}&returnTo=%2Flogbook%2Fadd`
     );
   });
 

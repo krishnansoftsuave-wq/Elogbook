@@ -42,6 +42,11 @@
 
   /* ELogbook brand tokens — the part of the NYX palette that shadcn's set has
      no slot for. See the palette block below for provenance. */
+  --color-info: var(--info);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --color-priority-high: var(--priority-high);
+  --color-priority-medium: var(--priority-medium);
   --color-brand-dark: var(--brand-dark);
   --color-brand-surface: var(--brand-surface);
   --color-brand-subtle: var(--brand-subtle);
@@ -50,6 +55,13 @@
   --color-on-brand-muted: var(--on-brand-muted);
   --color-auth-surface: var(--auth-surface);
   --color-border-subtle: var(--border-subtle);
+  /* One step below Tailwind's `text-xs` (0.75rem), for chart axis labels and
+     dense table captions. Added rather than reaching for `text-[0.66rem]`:
+     `.claude/rules/01` requires typography to come from the theme scale, and
+     three different arbitrary sub-xs sizes is how a scale stops being one. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1.1;
+
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -104,6 +116,48 @@
   --accent-foreground: oklch(0.4479 0.0757 186.15); /* #0A625B  C.tealDk */
 
   --destructive: oklch(0.5433 0.174 29.7); /* #C0392B  PRICOL.Critical */
+
+  /* Status semantics the prototype's `statusPill` needs and shadcn's Badge has
+     no slot for (app-source.txt 168 maps ten statuses onto five colour pairs;
+     `default`/`secondary`/`destructive`/`outline` cover only three of them).
+
+     Each is the *text* colour, rendered over its own 10% tint — the pattern
+     `badge.tsx:16` already uses for destructive.
+
+     Ratios are measured over that tint on `--background` (#EDF2F1), NOT on
+     `--card`. That distinction cost a round: an earlier version measured
+     against `--card` and called it "the worst case", which is backwards — white
+     is the *lightest* surface a pill can sit on, so it flatters dark text. The
+     same pill on `--background` or `--muted` measured 4.03–4.19:1, under the
+     4.5:1 bar `.claude/rules/01` and `/03` mark [ENFORCED]. Card figures are
+     given second because they are the easy case.
+
+     The prototype's own hexes miss AA in this treatment even on card
+     (#2F73B5 = 4.35:1, #9A6310 = 4.41:1), so each is darkened to clear 4.5:1
+     on the worst surface it can actually land on.
+
+     Note `--destructive` inherits the same weakness from shadcn's
+     `bg-destructive/10 text-destructive` (4.17:1 on --background). It is
+     pre-existing and out of this phase's scope — flagged, not silently
+     changed. */
+  --info: oklch(0.5041 0.1145 250.87); /* #2A67A3  4.56 bg · 5.13 card */
+  --warning: oklch(0.511 0.105 70.11); /* #8C5A0F  4.54 bg · 5.09 card */
+  --success: oklch(0.4882 0.1158 152.51); /* #19723E  4.60 bg · 5.18 card */
+
+  /* Priority dots. Never text, so WCAG 1.4.11's 3:1 non-text bar applies —
+     measured on `--background`, the darkest light surface a dot sits on.
+
+     `--priority-high` exists because reusing `--chart-3` (#D97706) for it
+     measured **2.82:1** and failed that bar outright, while looking fine on
+     white. A chart series and a status dot have different jobs and different
+     thresholds; sharing one token hid that. #CF7206 is the nearest passing
+     value. Critical (--destructive 4.81:1) and Low (--chart-4 4.53:1) already
+     clear it and are unchanged. */
+  --priority-high: oklch(0.644 0.1515 58.71); /* #CF7206  3.06 bg · 3.46 card */
+  --priority-medium: oklch(
+    0.6264 0.1248 70.45
+  ); /* #B7791F  3.22 bg · 3.64 card */
+
   --border: oklch(0.8914 0.0125 177.98); /* #D3DEDB  C.bd */
   --input: oklch(0.8692 0.0136 179.41); /* #CBD7D4  login field border */
   /* The brand teal doubles as the focus ring: 3.99:1 on --background and
@@ -194,6 +248,17 @@
   /* PRICOL.Critical lifted for a dark surface — #C0392B measures 2.85:1 on
      --card, below even the 3:1 non-text bar. This reads 6.36:1. */
   --destructive: oklch(0.7306 0.1374 25.81); /* #F2837A */
+
+  /* Status semantics, lifted for a dark surface the same way the chart ramp is.
+     Ratios measured as text over the token's own 10% tint on `--card`
+     (#16241F), which is how `StatusPill` renders them. */
+  --info: oklch(0.6632 0.1106 249.08); /* #5A98D4  4.53:1 */
+  --warning: oklch(0.6673 0.1403 69.02); /* #CB8215  4.54:1 */
+  --success: oklch(0.6458 0.1567 152.25); /* #25A85C  4.54:1 */
+  /* Non-text dots on a dark surface, both well clear of the 3:1 bar. */
+  --priority-high: oklch(0.7686 0.1447 62.32); /* #E8942A  6.06 card */
+  --priority-medium: oklch(0.6796 0.1363 69.85); /* #CD8723  5.42 card */
+
   --border: oklch(0.342 0.0259 176.6); /* #2A3D38 */
   --input: oklch(0.342 0.0259 176.6); /* #2A3D38 */
   --ring: oklch(0.6943 0.1121 183.68); /* #2FB3A4, 6.86:1 on background */
