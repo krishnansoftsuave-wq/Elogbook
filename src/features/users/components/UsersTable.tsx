@@ -23,6 +23,7 @@ import { UserAccessDialog } from "@/features/users/components/UserAccessDialog";
 import { UserStatusBadge } from "@/features/users/components/UserStatusBadge";
 import { UsersFilterBar } from "@/features/users/components/UsersFilterBar";
 import { useUserFilters } from "@/features/users/hooks/useUserFilters";
+import type { UserFilters } from "@/features/users/types";
 import { hasPermission } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
 import type { User } from "@/types/user";
@@ -79,9 +80,19 @@ const rowClassName = (row: Row<User>) =>
  * column — nothing writes it yet, so it would read "Never" on every row and buy
  * width with no information.
  */
-export const UsersTable = () => {
+interface UsersTableProps {
+  /**
+   * Parsed from the page's own `searchParams`, server-side — a bookmarked or
+   * shared users URL should land on the same filtered view it was copied
+   * from, not the defaults. See `useUserFilters` for why that read happens in
+   * the page rather than via `useSearchParams()` here.
+   */
+  initialFilters: UserFilters;
+}
+
+export const UsersTable = ({ initialFilters }: UsersTableProps) => {
   const { filters, queryFilters, setFilter, reset, isFiltered } =
-    useUserFilters();
+    useUserFilters(initialFilters);
   const [userToChange, setUserToChange] = useState<User | null>(null);
   const { permissions } = useSession();
 
