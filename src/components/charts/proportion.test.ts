@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BAR_HEIGHT_CLASS,
   PERCENT_BASIS,
+  PLOT_HEIGHT,
   apportion,
+  barHeightClass,
   basisClass,
   percentOfMax,
 } from "@/components/charts/proportion";
@@ -119,5 +122,47 @@ describe("percentOfMax", () => {
   it("returns 0 for a zero or negative value", () => {
     expect(percentOfMax(0, 10)).toBe(0);
     expect(percentOfMax(-4, 10)).toBe(0);
+  });
+});
+
+describe("BAR_HEIGHT_CLASS", () => {
+  it("covers 31 steps of 4px each, from 0 to PLOT_HEIGHT", () => {
+    expect(BAR_HEIGHT_CLASS).toHaveLength(31);
+    expect(PLOT_HEIGHT).toBe(120);
+  });
+
+  /**
+   * Tailwind's scanner reads source text, so each class must be present
+   * verbatim — the same reason `PERCENT_BASIS`'s own test pins its spelling.
+   */
+  it("spells each entry as the class for its own index", () => {
+    for (const [index, className] of BAR_HEIGHT_CLASS.entries()) {
+      expect(className).toBe(`h-${index}`);
+    }
+  });
+});
+
+describe("barHeightClass", () => {
+  it("returns an absolute height class, not a percentage", () => {
+    expect(barHeightClass(100)).toBe("h-30");
+    expect(barHeightClass(0)).toBe("h-0");
+  });
+
+  /**
+   * The whole reason this exists rather than reusing `basisClass`: the
+   * bar's column is deliberately `auto`-height (`StackedBarChart.tsx`'s own
+   * comment), and a percentage `flex-basis` cannot resolve against that —
+   * only an absolute height can size the bar independently of its parent.
+   */
+  it("rounds to the nearest of 31 discrete steps rather than a percentage", () => {
+    // 10/11.2 ≈ 89% → step 27 (89/100*30 = 26.7, rounds up).
+    expect(barHeightClass(89)).toBe("h-27");
+    // 2/11.2 ≈ 18% → step 5 (18/100*30 = 5.4, rounds down).
+    expect(barHeightClass(18)).toBe("h-5");
+  });
+
+  it("clamps out-of-range input rather than returning undefined", () => {
+    expect(barHeightClass(-10)).toBe("h-0");
+    expect(barHeightClass(140)).toBe("h-30");
   });
 });

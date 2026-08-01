@@ -55,4 +55,22 @@ describe("Breadcrumb", () => {
       screen.queryByRole("link", { name: "Trends & KPIs" })
     ).not.toBeInTheDocument();
   });
+
+  /**
+   * `breadcrumb()` colours every part by position — `i===last?C.tealDk:C.teal`
+   * — never by whether it carries an `onClick`/`href`. A non-last part with no
+   * `href` (unclickable, but not the current page either) still reads teal,
+   * the same as a linked one; only the last part gets the darker,
+   * AA-contrast-safe `--brand-dark`.
+   */
+  it("colours the active crumb brand-dark and every earlier crumb primary", () => {
+    render(
+      <Breadcrumb
+        items={[{ label: "Unclickable Parent" }, { label: "Trends & KPIs" }]}
+      />
+    );
+
+    expect(screen.getByText("Unclickable Parent")).toHaveClass("text-primary");
+    expect(screen.getByText("Trends & KPIs")).toHaveClass("text-brand-dark");
+  });
 });

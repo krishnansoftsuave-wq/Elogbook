@@ -77,6 +77,11 @@
      rather than an arbitrary `rounded-[5px]`. Deliberately not named `xs`, so
      Tailwind's own 2px `rounded-xs` (the legend swatches) stays available. */
   --radius-bar: calc(var(--radius) * 0.5);
+  /* 3px — the rounded-square KPI colour indicator (`sparkCard`,
+     `app-source.txt` 1881: `width:9,height:9,borderRadius:3`). No existing
+     step lands there: `rounded-xs` is 2px, `radius-sm` is 6px. A named token
+     rather than `rounded-[3px]` for the same reason `radius-bar` is one. */
+  --radius-indicator: 0.1875rem;
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);

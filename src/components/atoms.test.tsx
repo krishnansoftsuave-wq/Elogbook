@@ -254,6 +254,41 @@ describe("StatTile", () => {
     expect(icon).toHaveClass("size-4.25");
     expect(icon).not.toHaveClass("size-5");
   });
+
+  /**
+   * Unset by default — the icon renders at lucide's own stroke width (2)
+   * unless a caller opts in, the same "no second hardcoded default" rule
+   * `iconSize` follows.
+   */
+  it("leaves the icon's stroke-width at the library default when unset", () => {
+    const { container } = render(
+      <StatTile label="Overdue" value="8" icon={TriangleAlert} />
+    );
+    expect(container.querySelector("[aria-hidden]")).not.toHaveAttribute(
+      "stroke-width",
+      "1.75"
+    );
+  });
+
+  /**
+   * Trends' `trendTile`-sourced tiles pass `1.75` — a first attempt at `2.25`
+   * read cluttered at 17-20px (`TrendsScreen.tsx`'s own docblock has the
+   * reasoning); this pins that the prop actually reaches the SVG.
+   */
+  it("lets a caller set the icon's stroke-width", () => {
+    const { container } = render(
+      <StatTile
+        label="Overdue"
+        value="8"
+        icon={TriangleAlert}
+        iconStrokeWidth={1.75}
+      />
+    );
+    expect(container.querySelector("[aria-hidden]")).toHaveAttribute(
+      "stroke-width",
+      "1.75"
+    );
+  });
 });
 
 describe("EmptyState", () => {

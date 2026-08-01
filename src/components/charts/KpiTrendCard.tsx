@@ -107,8 +107,15 @@ export const KpiTrendCard = ({
       <CardContent className="flex flex-col gap-2.5">
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-bold text-foreground">{code}</span>
+          {/* A rounded square, not a circle — `sparkCard`'s own geometry
+              (`width:9,height:9,borderRadius:3`, app-source.txt 1881):
+              `size-2.25` is 9px on Tailwind's 0.25rem spacing scale,
+              `rounded-indicator` the matching 3px radius token. */}
           <span
-            className={cn("size-2.5 shrink-0 rounded-sm", SWATCH_BY_TONE[tone])}
+            className={cn(
+              "size-2.25 shrink-0 rounded-indicator",
+              SWATCH_BY_TONE[tone]
+            )}
             aria-hidden
           />
         </div>

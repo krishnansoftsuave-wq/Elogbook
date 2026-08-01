@@ -31,4 +31,18 @@ describe("NextShipsCard", () => {
     expect(screen.getByText("No ships scheduled")).toBeInTheDocument();
     expect(screen.queryByText("Next arrival")).not.toBeInTheDocument();
   });
+
+  /** `trendTile` (`app-source.txt` 1896) places the icon first, at 17px —
+   * this tile stayed on `StatTile`'s icon-right, 20px default until now. */
+  it("sizes the 'Next arrival' tile icon at 17px, not the default 20px", () => {
+    render(<NextShipsCard nextShips={SHIPS} />);
+    const card = screen
+      .getByText("Next arrival", { selector: "p" })
+      .closest('[data-slot="card-content"]');
+    const icon = (card as HTMLElement).querySelector("[aria-hidden]");
+
+    expect(icon).toHaveClass("size-4.25");
+    expect(icon).not.toHaveClass("size-5");
+    expect([...(card?.children ?? [])].indexOf(icon as Element)).toBe(0);
+  });
 });

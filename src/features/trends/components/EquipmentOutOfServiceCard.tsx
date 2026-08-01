@@ -29,6 +29,13 @@ import { cn } from "@/lib/utils";
  * own docblock says why: "carrying both the rows and their own totals invites
  * a response whose header disagrees with its body."
  *
+ * **Tiles are icon-left at 17px**, matching `trendTile` (`app-source.txt`
+ * 1896, `oosCard`'s own call at 1942-1944) — `StatTile`'s `iconPosition`,
+ * `iconSize` and `iconStrokeWidth` props, the same three every other
+ * `trendTile`-sourced tile on this screen passes. These three tiles were
+ * still on `StatTile`'s icon-right default until now, the gap `StatTile.tsx`'s
+ * own docblock names.
+ *
  * **"By area" as a single-bucket `StackedBarChart`.** `equipmentOutOfServiceByArea`
  * is one count per area — there is no second series to stack — so it is a
  * one-bucket call to the column chart rather than reaching for the horizontal
@@ -106,7 +113,11 @@ export const EquipmentOutOfServiceCard = ({
     <Card className={className}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Wrench className="size-4 text-primary" aria-hidden />
+          {/* `card()`'s `tIcon` renders at 17px (app-source.txt 176), not
+              lucide's usual 16px `size-4` — `StatTile.tsx`'s own docblock has
+              the `size-4.25` reasoning (Tailwind's spacing scale is 0.25rem
+              per step, so 4.25 × 0.25rem = 17px exactly). */}
+          <Wrench className="size-4.25 text-primary" aria-hidden />
           Equipment Out of Service
         </CardTitle>
       </CardHeader>
@@ -118,6 +129,9 @@ export const EquipmentOutOfServiceCard = ({
             icon={Wrench}
             hint={`${total} tags this shift`}
             tone="text-primary"
+            iconPosition="start"
+            iconSize="size-4.25"
+            iconStrokeWidth={1.75}
           />
           <StatTile
             label="No return date"
@@ -125,6 +139,9 @@ export const EquipmentOutOfServiceCard = ({
             icon={CalendarX}
             hint="marked TBC"
             tone="text-warning"
+            iconPosition="start"
+            iconSize="size-4.25"
+            iconStrokeWidth={1.75}
           />
           <StatTile
             label="Needs shutdown"
@@ -132,6 +149,9 @@ export const EquipmentOutOfServiceCard = ({
             icon={HardHat}
             hint={needsShutdown[0]?.tag}
             tone="text-destructive"
+            iconPosition="start"
+            iconSize="size-4.25"
+            iconStrokeWidth={1.75}
           />
         </div>
 

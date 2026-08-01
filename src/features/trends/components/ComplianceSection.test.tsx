@@ -108,4 +108,22 @@ describe("ComplianceSection", () => {
     expect(cells[0]).toHaveTextContent("4");
     expect(cells[4]).toHaveTextContent("9");
   });
+
+  /**
+   * `trendTile`'s own call colours "Total open items" `C.tealDk`
+   * (`--brand-dark`), not the generic `text-primary` teal — this was the one
+   * tile rendering the wrong token (`app-source.txt` 1922-1925).
+   */
+  it("colours the total-open-items tile brand-dark, not primary", () => {
+    render(<ComplianceSection complianceCategories={CATEGORIES} />);
+
+    const card = screen
+      .getByText("Total open items", { selector: "p" })
+      .closest('[data-slot="card"]');
+    expect(card).not.toBeNull();
+
+    const value = within(card as HTMLElement).getByText("14");
+    expect(value).toHaveClass("text-brand-dark");
+    expect(value).not.toHaveClass("text-primary");
+  });
 });

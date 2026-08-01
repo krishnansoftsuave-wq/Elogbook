@@ -19,4 +19,18 @@ describe("OletCard", () => {
     render(<OletCard olet={{ count: 0 }} />);
     expect(screen.getByText(/FR-AN-06/)).toBeInTheDocument();
   });
+
+  /** `trendTile` (`app-source.txt` 1896) places the icon first, at 17px —
+   * this tile stayed on `StatTile`'s icon-right, 20px default until now. */
+  it("sizes the tile icon at 17px, not the default 20px", () => {
+    render(<OletCard olet={{ count: 0 }} />);
+    const card = screen
+      .getByText("OLET items", { selector: "p" })
+      .closest('[data-slot="card-content"]');
+    const icon = (card as HTMLElement).querySelector("[aria-hidden]");
+
+    expect(icon).toHaveClass("size-4.25");
+    expect(icon).not.toHaveClass("size-5");
+    expect([...(card?.children ?? [])].indexOf(icon as Element)).toBe(0);
+  });
 });

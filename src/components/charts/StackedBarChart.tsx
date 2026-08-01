@@ -6,6 +6,7 @@ import {
 } from "@/components/charts/ChartFrame";
 import {
   apportion,
+  barHeightClass,
   basisClass,
   percentOfMax,
 } from "@/components/charts/proportion";
@@ -34,13 +35,30 @@ import { cn } from "@/lib/utils";
  * label 10px/500 (`text-3xs`) with a 26px floor (`min-h-6.5`) so a wrapping
  * two-line name does not shove its neighbours' baselines out of line.
  *
+ * **A column has no height of its own — it shrink-wraps, and that is the
+ * fix for a real bug.** An earlier version gave the column `h-full` plus an
+ * inner `flex-1` "well" the bar grew inside; the well absorbed 100% of the
+ * container's spare vertical space regardless of the bar's own height, so
+ * the value label above it sat at the same fixed height for every column —
+ * a short bar's label floated far above it instead of sitting on top of it.
+ * `barHeightClass` (`proportion.ts`) replaces that well: it gives the bar an
+ * **absolute** height (`h-N`, literal pixels), not a percentage, so the bar
+ * is the only thing in the column whose size varies, the column's total
+ * height is exactly `label + bar + category label`, and the row's own
+ * `items-end` (already correct — it was `h-full` on the child defeating it)
+ * bottom-aligns columns of different heights at the category-label baseline.
+ * `PLOT_HEIGHT` (120, `iBar`'s own number) is what "the max value" maps to.
+ *
  * Bar height is `percentOfMax` against `niceMax` — the prototype's own 1.12
- * headroom factor (`scale.ts`), kept so the tallest column never touches the
- * value label above it. Segment heights *within* a column come from
- * `apportion`, which guarantees they total exactly 100% of the column rather
- * than 99% or 101% — visible as a gap or an overflow at the rounded cap.
- * `flex-col-reverse` puts the first bucket at the bottom, where a stack reads
- * from.
+ * headroom factor (`scale.ts`), kept so the tallest column's bar never quite
+ * reaches `PLOT_HEIGHT`, leaving room for its value label above. Segment
+ * heights *within* a column come from `apportion`, which guarantees they
+ * total exactly 100% of the bar's own (now-definite) height rather than 99%
+ * or 101% — visible as a gap or an overflow at the rounded cap. That 100%
+ * still resolves correctly against `barHeightClass`'s absolute height, even
+ * though a percentage wouldn't resolve against the column's auto height one
+ * level up. `flex-col-reverse` puts the first bucket at the bottom, where a
+ * stack reads from.
  *
  * **Hover** dims every bar to 85% and brightens the hovered one to 100%,
  * bolding its label — `iBar`'s `opacity:hov?1:.85` / `fontWeight:hov?700:500`
@@ -171,39 +189,38 @@ export const StackedBarChart = ({
           return (
             <div
               key={category.label}
-              className="group flex h-full min-w-0 flex-1 flex-col items-center gap-1.5"
+              className="group flex min-w-0 flex-1 flex-col items-center gap-1.5"
             >
               <span className="text-xs font-bold text-foreground">
                 {unit ? `${total} ${unit}` : total}
               </span>
 
-              {/* The well the bar grows inside — `justify-end` puts the bar on
-                  the baseline, so a taller value rises rather than hangs. */}
-              <div className="flex min-h-0 w-full flex-1 flex-col justify-end">
-                <div
-                  className={cn(
-                    "mx-auto flex w-full max-w-13 shrink-0 grow-0 flex-col-reverse overflow-hidden rounded-t-bar opacity-85 transition-opacity group-hover:opacity-100",
-                    basisClass(columnHeight)
-                  )}
-                >
-                  {shares.map((share, bucketIndex) => {
-                    const bucket = buckets[bucketIndex];
-                    if (!bucket || share <= 0) return null;
-                    const value = values[bucketIndex] ?? 0;
+              {/* Absolute height (`barHeightClass`), not a percentage: this
+                  column has no height of its own for a percentage to resolve
+                  against, by design — see the file docblock. */}
+              <div
+                className={cn(
+                  "mx-auto flex w-full max-w-13 flex-col-reverse overflow-hidden rounded-t-bar opacity-85 transition-opacity group-hover:opacity-100",
+                  barHeightClass(columnHeight)
+                )}
+              >
+                {shares.map((share, bucketIndex) => {
+                  const bucket = buckets[bucketIndex];
+                  if (!bucket || share <= 0) return null;
+                  const value = values[bucketIndex] ?? 0;
 
-                    return (
-                      <div
-                        key={bucket.name}
-                        title={`${bucket.name}: ${value}`}
-                        className={cn(
-                          "w-full shrink-0 grow-0",
-                          basisClass(share),
-                          SWATCH_BY_TONE[category.tone ?? bucket.tone]
-                        )}
-                      />
-                    );
-                  })}
-                </div>
+                  return (
+                    <div
+                      key={bucket.name}
+                      title={`${bucket.name}: ${value}`}
+                      className={cn(
+                        "w-full shrink-0 grow-0",
+                        basisClass(share),
+                        SWATCH_BY_TONE[category.tone ?? bucket.tone]
+                      )}
+                    />
+                  );
+                })}
               </div>
 
               <span className="min-h-6.5 text-center text-3xs font-medium text-muted-foreground group-hover:font-bold group-hover:text-foreground">

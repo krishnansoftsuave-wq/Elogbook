@@ -43,9 +43,15 @@ interface StatTileProps {
   /**
    * Which side the icon renders on. Defaults to `"end"` — the "Shift KPIs"
    * widget's original placement, unchanged so the home dashboard's layout
-   * never moves under a caller it didn't ask to change. Trends' cards pass
-   * `"start"` to match the prototype's `trendTile`, which places the icon
-   * first (`app-source.txt` 1896: `this.ic(icon,…), this.h('span',…,label)`).
+   * never moves under a caller it didn't ask to change. Every Trends tile
+   * passes `"start"` to match the prototype's `trendTile`, which places the
+   * icon first (`app-source.txt` 1896: `this.ic(icon,…), this.h('span',…,label)`)
+   * — all nine call sites (Compliance's four, Equipment Out of Service's
+   * three, OLET's one, Next Ships' one) are the same prototype function, so
+   * this is one consistent choice, not a per-card one. Two rounds fixed only
+   * the Compliance tiles and left the other five at the "end"/default-size
+   * fallback, which is why they kept drifting back into a review; fixed
+   * everywhere in the same change this time.
    */
   iconPosition?: "start" | "end";
   /**
@@ -54,10 +60,20 @@ interface StatTileProps {
    * `trendTile` (`app-source.txt` 1896) sets its icon at `font-size:17` — a
    * quarter-rem step Tailwind v4's spacing scale expresses exactly as
    * `size-4.25` (4.25 x 0.25rem = 17px), not an arbitrary `size-[17px]`
-   * escape hatch. Trends' compliance tiles pass this explicitly; every other
-   * caller is unaffected.
+   * escape hatch. Every `trendTile`-sourced tile passes this explicitly (see
+   * `iconPosition`'s own comment for the full list); `ShiftKpis.tsx` is
+   * unaffected.
    */
   iconSize?: string;
+  /**
+   * SVG `stroke-width`, passed straight through to the icon. Unset uses
+   * lucide's own default (2). Every `trendTile`-sourced tile passes `1.75` —
+   * at 17-20px a heavier stroke (2.25 was tried first) made an outline icon
+   * read cluttered rather than solid; see `TrendsScreen.tsx`'s docblock for
+   * the full reasoning. Left unset elsewhere (`ShiftKpis.tsx`) so that
+   * caller's rendering does not shift under a change it did not ask for.
+   */
+  iconStrokeWidth?: number;
 }
 
 export const StatTile = ({
@@ -69,10 +85,12 @@ export const StatTile = ({
   isLoading = false,
   iconPosition = "end",
   iconSize = "size-5",
+  iconStrokeWidth,
 }: StatTileProps) => {
   const icon = (
     <Icon
       className={cn(iconSize, "shrink-0", tone ?? "text-muted-foreground")}
+      strokeWidth={iconStrokeWidth}
       aria-hidden
     />
   );

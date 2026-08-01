@@ -425,9 +425,38 @@ describe("StackedBarChart", () => {
     const bars = [...container.querySelectorAll("[title]")].map(
       (segment) => segment.parentElement
     );
-    // `basis-[89%]` vs `basis-[18%]` — 10/11.2 and 2/11.2 of the plot.
-    expect(bars[0]?.className).toContain("basis-[89%]");
-    expect(bars[1]?.className).toContain("basis-[18%]");
+    // An absolute `h-N` height, not a percentage `flex-basis` — the bar's
+    // column has no height of its own to be a percentage of (see the file
+    // docblock). `h-27` (108px) vs `h-5` (20px) — 10/11.2 and 2/11.2 of
+    // `PLOT_HEIGHT`'s 30 steps.
+    expect(bars[0]?.className).toContain("h-27");
+    expect(bars[1]?.className).toContain("h-5");
+    // Genuinely two different heights, not the same class twice.
+    expect(bars[0]?.className).not.toContain("h-5 ");
+  });
+
+  /**
+   * The structural bug this geometry exists to fix: a `flex-1` "well" inside
+   * an `h-full` column absorbed all vertical slack regardless of the bar's
+   * own height, so every value label sat at the same fixed height instead of
+   * directly above its own bar. Pinned by asserting the column has no
+   * explicit height and the bar's height class is absolute, not relative.
+   */
+  it("lets the column shrink-wrap so its label sits above its own bar", () => {
+    const { container } = render(
+      <StackedBarChart
+        label="Chart"
+        buckets={[{ name: "Out of service", tone: "chart-1" }]}
+        categories={[{ label: "Solo", values: [5] }]}
+      />
+    );
+
+    const column = container.querySelector("[data-slot='chart-columns'] > div");
+    expect(column?.className).not.toContain("h-full");
+
+    const bar = container.querySelector("[title]")?.parentElement;
+    expect(bar?.className).toMatch(/\bh-\d+\b/);
+    expect(bar?.className).not.toMatch(/basis-\[/);
   });
 });
 

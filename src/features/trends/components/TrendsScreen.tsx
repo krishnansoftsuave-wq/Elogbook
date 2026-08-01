@@ -1,6 +1,6 @@
 "use client";
 
-import { Boxes, CalendarX, Gauge } from "lucide-react";
+import { Archive, CalendarX, Gauge } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
@@ -56,8 +56,42 @@ import { formatShiftDate } from "@/lib/datetime";
  * silently rather than visibly. Icons are the nearest lucide equivalent of
  * the prototype's Material glyph, not a pixel-identical substitute:
  * `speed` → `Gauge`, `event_busy` → `CalendarX` (a calendar-with-an-X, the
- * closest shape match to "busy/blocked"), `inventory_2` → `Boxes`
+ * closest shape match to "busy/blocked"), `inventory_2` → `Archive`
  * (`app-source.txt` 1917/1974/1978).
+ *
+ * **`inventory_2` was `Boxes` before this, and that was a defect, not a
+ * translation.** Material's `inventory_2` is a simple filled glyph at 17-20px;
+ * `Boxes` is twelve separate SVG paths drawing three overlapping isometric
+ * cubes with facet lines — genuinely the busiest icon lucide ships, confirmed
+ * by counting primitives in `node_modules/lucide-react`, not by eye. At small
+ * sizes the extra geometry reads as visual noise rather than more detail.
+ *
+ * **`Archive`, not `Package`.** `ComplianceSection`'s "Total open items" tile
+ * had the exact same `Boxes` glyph a second time (`inventory`, a different
+ * Material icon but the same lucide substitute) and needed the identical fix.
+ * An earlier pass gave the two instances two different simple icons
+ * (`Package` here, `Archive` there) to keep "equipment" and "a compliance
+ * item count" visually distinct — deliberately reversed on request: the two
+ * should read as the same concept, and `Archive` is the one to keep, so this
+ * section now matches `ComplianceSection.tsx`'s icon exactly.
+ *
+ * **Geometry is `secTitle`'s own numbers** (`app-source.txt` 760):
+ * `gap:9` → `gap-2.25`, `fontSize:14,fontWeight:700,color:C.tx` → `text-sm
+ * font-bold text-foreground` (`text-sm` is Tailwind's own 14px step, not a
+ * new token), icon `fontSize:19,color:C.teal` → `size-5` (a plain existing
+ * step; `secTitle`'s 19 rounds to it rather than adding a one-off `size-4.75`
+ * for a value the reference itself calls "roughly 20") and `text-primary`.
+ *
+ * **`strokeWidth={1.75}` is scoped to these three icons (and `StatTile`'s
+ * `iconStrokeWidth`, for the `trendTile`-sourced tiles).** A first pass tried
+ * `2.25`, reasoning that lucide's outline default (`2`) reads lighter than the
+ * prototype's filled Material Icons. That reasoning held at 24px+ but not at
+ * 17-20px: a heavier stroke at this size makes an outline glyph look
+ * cluttered and bulkier rather than more solid, the opposite of the goal.
+ * `1.75` is close enough to the default to stay clean while still reading a
+ * touch more deliberate. `strokeWidth` is a per-icon prop, not a token, so
+ * this is set explicitly rather than globally — every other icon on this
+ * screen (card headers, row icons) stays at the library default.
  */
 export const TrendsScreen = () => {
   const [period, setPeriod] = useState<TrendPeriod>(DEFAULT_TREND_PERIOD);
@@ -85,8 +119,12 @@ export const TrendsScreen = () => {
     content = (
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-4">
-          <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight">
-            <Gauge className="size-4 text-muted-foreground" aria-hidden />
+          <h2 className="flex items-center gap-2.25 text-sm font-bold tracking-tight text-foreground">
+            <Gauge
+              className="size-5 text-primary"
+              strokeWidth={1.75}
+              aria-hidden
+            />
             Production KPIs — {PERIOD_LABEL[period]} Trend
           </h2>
           <ProductionKpiSection productionKpis={data.productionKpis} />
@@ -99,16 +137,24 @@ export const TrendsScreen = () => {
         </div>
 
         <div className="flex flex-col gap-4">
-          <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight">
-            <CalendarX className="size-4 text-muted-foreground" aria-hidden />
+          <h2 className="flex items-center gap-2.25 text-sm font-bold tracking-tight text-foreground">
+            <CalendarX
+              className="size-5 text-primary"
+              strokeWidth={1.75}
+              aria-hidden
+            />
             Compliance &amp; Due-Date Status
           </h2>
           <ComplianceSection complianceCategories={data.complianceCategories} />
         </div>
 
         <div className="flex flex-col gap-4">
-          <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight">
-            <Boxes className="size-4 text-muted-foreground" aria-hidden />
+          <h2 className="flex items-center gap-2.25 text-sm font-bold tracking-tight text-foreground">
+            <Archive
+              className="size-5 text-primary"
+              strokeWidth={1.75}
+              aria-hidden
+            />
             Equipment, Flare &amp; Shipping
           </h2>
           <EquipmentFlareShipGrid

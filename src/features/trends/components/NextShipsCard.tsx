@@ -21,6 +21,13 @@ import { cn } from "@/lib/utils";
  * closed over the three entities that have a lifecycle a permission check
  * cares about, and widening it for a fourth, unrelated vocabulary here would
  * be scope creep on a shared component from this lane.
+ *
+ * The "Next arrival" tile is icon-left at 17px
+ * (`iconPosition`/`iconSize`/`iconStrokeWidth`), matching `trendTile`
+ * (`app-source.txt` 1896, `shipCard`'s own call at 1962) the same way every
+ * other tile on this screen does — see `EquipmentOutOfServiceCard.tsx`'s
+ * comment. The per-row `ShipIcon` below it is a different, already-correct
+ * element (16px, `text-primary`) and is unaffected.
  */
 
 const SHIP_STATUS_LABEL: Record<ShipArrivalStatus, string> = {
@@ -45,7 +52,10 @@ export const NextShipsCard = ({ nextShips, className }: NextShipsCardProps) => {
     <Card className={className}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <Sailboat className="size-4 text-primary" aria-hidden />
+          {/* 17px, not lucide's usual 16px `size-4` — `card()`'s `tIcon`
+              (app-source.txt 176); see `EquipmentOutOfServiceCard.tsx`'s
+              comment for the exact-px reasoning. */}
+          <Sailboat className="size-4.25 text-primary" aria-hidden />
           Next Ships
         </CardTitle>
       </CardHeader>
@@ -57,6 +67,9 @@ export const NextShipsCard = ({ nextShips, className }: NextShipsCardProps) => {
             icon={Sailboat}
             hint={`ETA ${formatPlantDateTime(next.eta)}`}
             tone="text-primary"
+            iconPosition="start"
+            iconSize="size-4.25"
+            iconStrokeWidth={1.75}
           />
         ) : (
           <EmptyState

@@ -74,8 +74,11 @@ describe("ProductionKpiSection", () => {
       "bg-chart-3", // Flare — amber
     ];
 
+    // `rounded-indicator`, not `rounded-sm`: `sparkCard`'s dot is a
+    // rounded square at a 3px radius (app-source.txt 1881), not the
+    // theme's generic small-radius step.
     const swatches = [
-      ...container.querySelectorAll("[aria-hidden].rounded-sm"),
+      ...container.querySelectorAll("[aria-hidden].rounded-indicator"),
     ];
     expect(swatches).toHaveLength(5);
     expected.forEach((className, index) => {

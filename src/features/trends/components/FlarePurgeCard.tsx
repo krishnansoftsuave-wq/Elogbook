@@ -42,7 +42,10 @@ export const FlarePurgeCard = ({
   <Card className={className}>
     <CardHeader>
       <CardTitle className="flex items-center gap-2 text-base">
-        <Gauge className="size-4 text-primary" aria-hidden />
+        {/* 17px, not lucide's usual 16px `size-4` — `card()`'s `tIcon`
+            (app-source.txt 176); see `EquipmentOutOfServiceCard.tsx`'s
+            comment for the exact-px reasoning. */}
+        <Gauge className="size-4.25 text-primary" aria-hidden />
         Flare Purge Medium
       </CardTitle>
     </CardHeader>

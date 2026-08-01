@@ -160,4 +160,32 @@ describe("EquipmentOutOfServiceCard", () => {
     expect(segments[2]).toHaveClass("bg-chart-1");
     expect(segments[3]).toHaveClass("bg-chart-7");
   });
+
+  /**
+   * Regression guard: these three tiles stayed on `StatTile`'s icon-right,
+   * size-5 default through two prior parity rounds even after the Compliance
+   * tiles were fixed the same way. `trendTile` (`app-source.txt` 1896) is one
+   * function for all of them — icon first, at 17px.
+   */
+  it("sizes each tile icon at 17px, not the default 20px", () => {
+    render(
+      <EquipmentOutOfServiceCard
+        equipmentOutOfService={ROWS}
+        equipmentOutOfServiceByArea={BY_AREA}
+      />
+    );
+
+    for (const label of [
+      "Total out of service",
+      "No return date",
+      "Needs shutdown",
+    ]) {
+      const card = screen
+        .getByText(label, { selector: "p" })
+        .closest('[data-slot="card"]');
+      const icon = (card as HTMLElement).querySelector("[aria-hidden]");
+      expect(icon).toHaveClass("size-4.25");
+      expect(icon).not.toHaveClass("size-5");
+    }
+  });
 });

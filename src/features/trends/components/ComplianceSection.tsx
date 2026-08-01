@@ -1,4 +1,10 @@
-import { Boxes, CircleAlert, Clock, HelpCircle } from "lucide-react";
+import {
+  Archive,
+  CalendarX,
+  CircleAlert,
+  Clock,
+  HelpCircle,
+} from "lucide-react";
 
 import type { ChartTone } from "@/components/charts/tones";
 import { HorizontalStackedBarChart } from "@/components/charts/HorizontalStackedBarChart";
@@ -52,6 +58,23 @@ import { cn } from "@/lib/utils";
  * **Ranked by overdue count**, matching the prototype's own sort
  * (`cats=...slice().sort((a,b)=>(b.b[0]-a.b[0])||...)`, app-source.txt 1904):
  * highest-overdue category first, ties broken by total open items.
+ *
+ * **Tile icon → tile colour, and tile icon simplicity.** `trendTile`'s own
+ * call (app-source.txt 1922-1925) colours each tile's icon (and its number)
+ * to the tile's own meaning, not one shared tone: `Total open items` is
+ * `C.tealDk` (`--brand-dark`), `Overdue` is destructive red, `Due ≤ 7 days` is
+ * warning amber, `No due date` is muted. `Total open items` was rendering
+ * `text-primary` instead of `text-brand-dark` — fixed here, since `StatTile`'s
+ * `tone` prop drives both the icon and the number, one prop covers both.
+ *
+ * `Total open items`'s icon (`inventory`) was also `Boxes` — the same
+ * twelve-path glyph `TrendsScreen.tsx`'s own comment documents as lucide's
+ * busiest icon, and a second, independent instance of it besides the section
+ * header's `inventory_2`. Replaced with `Archive` (3 primitives) — and
+ * `TrendsScreen.tsx`'s "Equipment, Flare & Shipping" header now uses the same
+ * `Archive`, on request: this tile's choice is the one to keep, so both
+ * `inventory_2` and `inventory` render as the identical glyph rather than two
+ * different simple ones.
  */
 
 const DUE_BUCKET_CHART_TONE: Record<DueBucket, ChartTone> = {
@@ -116,11 +139,12 @@ export const ComplianceSection = ({
         <StatTile
           label="Total open items"
           value={String(totalOpen)}
-          icon={Boxes}
+          icon={Archive}
           hint={`across ${complianceCategories.length} categories`}
-          tone="text-primary"
+          tone="text-brand-dark"
           iconPosition="start"
           iconSize="size-4.25"
+          iconStrokeWidth={1.75}
         />
         <StatTile
           label="Overdue"
@@ -130,6 +154,7 @@ export const ComplianceSection = ({
           tone="text-destructive"
           iconPosition="start"
           iconSize="size-4.25"
+          iconStrokeWidth={1.75}
         />
         <StatTile
           label="Due ≤ 7 days"
@@ -139,6 +164,7 @@ export const ComplianceSection = ({
           tone="text-warning"
           iconPosition="start"
           iconSize="size-4.25"
+          iconStrokeWidth={1.75}
         />
         <StatTile
           label="No due date"
@@ -148,12 +174,20 @@ export const ComplianceSection = ({
           tone="text-muted-foreground"
           iconPosition="start"
           iconSize="size-4.25"
+          iconStrokeWidth={1.75}
         />
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
+          <CardTitle className="flex items-center gap-2 text-base">
+            {/* `card()`'s own `tIcon:'event_busy'` (app-source.txt 1928) — the
+                same glyph `secTitle('event_busy', 'Compliance & Due-Date
+                Status')` uses, so it maps to the same lucide icon
+                (`TrendsScreen.tsx`) rather than inventing a second
+                translation of one Material glyph. This card's title was
+                previously missing an icon entirely. */}
+            <CalendarX className="size-4.25 text-primary" aria-hidden />
             Compliance Items — Due-Date Status by Category
           </CardTitle>
         </CardHeader>

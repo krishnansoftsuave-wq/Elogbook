@@ -196,3 +196,69 @@ export const percentOfMax = (value: number, max: number): number => {
   if (!Number.isFinite(max) || max <= 0) return 0;
   return Math.min(100, Math.round((value / max) * 100));
 };
+
+/**
+ * A column chart's tallest possible bar, in pixels — `iBar`'s own
+ * `height:120` (`app-source.txt` 1946). `BAR_HEIGHT_CLASS`/`barHeightClass`
+ * below express any shorter bar as a fraction of this.
+ */
+export const PLOT_HEIGHT = 120;
+
+/**
+ * `BAR_HEIGHT_CLASS[n]` is the Tailwind class for a **literal** `n * 4px`
+ * height, for `n` in `0…30` (0 to `PLOT_HEIGHT`, 4px per Tailwind spacing
+ * step). Deliberately an absolute `h-N`, not a `PERCENT_BASIS`-style
+ * `flex-basis` percentage: a percentage height only resolves against a flex
+ * container whose *own* height is definite, and the bar's parent column is
+ * intentionally `auto`-height (see `StackedBarChart.tsx`'s own comment on why
+ * — briefly, so a short column's value label sits directly above its own
+ * bar rather than at the top of a fixed-height well every column shares).
+ * With no definite ancestor to be a percentage *of*, `basisClass` would
+ * silently collapse to 0 here; an absolute height has no such dependency.
+ * Written out for the same reason `PERCENT_BASIS` is: Tailwind's scanner
+ * needs each class as literal text.
+ */
+export const BAR_HEIGHT_CLASS: readonly string[] = [
+  "h-0",
+  "h-1",
+  "h-2",
+  "h-3",
+  "h-4",
+  "h-5",
+  "h-6",
+  "h-7",
+  "h-8",
+  "h-9",
+  "h-10",
+  "h-11",
+  "h-12",
+  "h-13",
+  "h-14",
+  "h-15",
+  "h-16",
+  "h-17",
+  "h-18",
+  "h-19",
+  "h-20",
+  "h-21",
+  "h-22",
+  "h-23",
+  "h-24",
+  "h-25",
+  "h-26",
+  "h-27",
+  "h-28",
+  "h-29",
+  "h-30",
+];
+
+/**
+ * A 0–100 percent (`percentOfMax`'s own output) as the nearest 4px-step
+ * absolute height class. 31 steps over 120px is ~4px resolution — finer than
+ * `PERCENT_BASIS`'s whole-percent steps would need to be for a chart this
+ * size, since a percentage point of 120px is already sub-pixel.
+ */
+export const barHeightClass = (percent: number): string => {
+  const step = Math.round((Math.min(100, Math.max(0, percent)) / 100) * 30);
+  return BAR_HEIGHT_CLASS[step] ?? "h-0";
+};
