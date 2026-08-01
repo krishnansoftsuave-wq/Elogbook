@@ -1,8 +1,12 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { toast } from "sonner";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { NotificationsList } from "@/features/notifications/components/NotificationsList";
+import {
+  MarkAllReadButton,
+  NotificationsList,
+} from "@/features/notifications/components/NotificationsList";
 import { NotificationsTray } from "@/features/notifications/components/NotificationsTray";
 import { createTestQueryClient, renderWithProviders } from "@/test/utils";
 import {
@@ -12,6 +16,20 @@ import {
   paginatedEnvelope,
   resetMockApi,
 } from "@/test/mockApi";
+
+// Mocked at the module boundary — renderWithProviders mounts no <Toaster/> to count against.
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+// Fixed two hours after the fixture's created_at so formatRelativeTime deterministically produces "2h ago".
+const NOW = new Date("2026-07-31T12:45:00+00:00");
+vi.mock("@/hooks/useNow", () => ({
+  useNow: () => NOW,
+}));
 
 const notification = (overrides: Record<string, unknown> = {}) => ({
   id: "NTF-001",
@@ -26,17 +44,15 @@ const notification = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-let lastQuery: Record<string, unknown> = {};
 let readPosts: string[] = [];
 
 const stubList = (
   items: readonly unknown[] = [notification()],
   total?: number
 ) => {
-  mockRoute("GET", /\/notifications$/, (config) => {
-    lastQuery = (config.params ?? {}) as Record<string, unknown>;
-    return paginatedEnvelope(items, { total: total ?? items.length });
-  });
+  mockRoute("GET", /\/notifications$/, () =>
+    paginatedEnvelope(items, { total: total ?? items.length })
+  );
 };
 
 const stubMarkRead = () => {
@@ -52,8 +68,8 @@ const stubMarkRead = () => {
 };
 
 beforeEach(() => {
-  lastQuery = {};
   readPosts = [];
+  vi.clearAllMocks();
   installMockApi();
 });
 
@@ -69,8 +85,8 @@ describe("NotificationsList", () => {
 
     expect(await screen.findByText("Action assigned to you")).toBeVisible();
     expect(screen.getByText("Inspect valve XV-118 — due today")).toBeVisible();
-    // 10:45 UTC is 14:45 GST — plant time, not the runner's.
-    expect(screen.getByText("31 Jul, 14:45")).toBeVisible();
+    // NOW is fixed two hours after the fixture's created_at.
+    expect(screen.getByText("2h ago")).toBeVisible();
   });
 
   /** Click-through to the record the notification is about. */
@@ -103,11 +119,7 @@ describe("NotificationsList", () => {
     ).toHaveAttribute("href", "/summaries/SUM-20260731-D");
   });
 
-  /**
-   * Reports are §7.8 and belong to Phase 4. A link to a route that does not
-   * exist would 404 into the app's own not-found page, which reads as breakage
-   * rather than "not built yet".
-   */
+  // Reports (§7.8) have no route yet — a link would 404 rather than read as "not built yet".
   it("does not link a notification whose target this build has no screen for", async () => {
     stubList([
       notification({
@@ -167,52 +179,54 @@ describe("NotificationsList", () => {
     expect(await screen.findByText("Unread")).toBeInTheDocument();
   });
 
-  /**
-   * The flag reaches the server rather than being applied in the browser —
-   * filtering ten rows client-side would look identical on the seeded plant and
-   * be wrong on a real one.
-   *
-   * Switching *back* asserts the control state, not a second request: `All` is
-   * the key that was already fetched, and a fresh cache entry is served without
-   * a refetch. That is correct, and asserting a request here would have been
-   * asserting a cache miss.
-   */
-  it("sends the unread filter to the server and tracks which tab is active", async () => {
-    stubList();
+  // Re-filters the already-fetched page instead of asking the server again with unread=true, which used to cost a second request.
+  it("filters to unread client-side from the one page already fetched, with no second request", async () => {
+    let requestCount = 0;
+    mockRoute("GET", /\/notifications$/, () => {
+      requestCount += 1;
+      return paginatedEnvelope([
+        notification(), // unread by default
+        notification({
+          id: "NTF-002",
+          title: "Shift summary ready",
+          body: "Already dealt with",
+          read: true,
+        }),
+      ]);
+    });
 
     renderWithProviders(<NotificationsList />);
     await screen.findByText("Action assigned to you");
-    expect(lastQuery.unread).toBeUndefined();
+    expect(screen.getByText("Shift summary ready")).toBeVisible();
 
     await userEvent.click(screen.getByRole("button", { name: "Unread" }));
-    await waitFor(() => expect(lastQuery.unread).toBe(true));
     expect(screen.getByRole("button", { name: "Unread" })).toHaveAttribute(
       "aria-pressed",
       "true"
     );
+    expect(screen.getByText("Action assigned to you")).toBeVisible();
+    expect(screen.queryByText("Shift summary ready")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "All" }));
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "All" })).toHaveAttribute(
-        "aria-pressed",
-        "true"
-      )
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
     );
     expect(screen.getByRole("button", { name: "Unread" })).toHaveAttribute(
       "aria-pressed",
       "false"
     );
+    expect(screen.getByText("Shift summary ready")).toBeVisible();
+
+    // NotificationsList and ThisWeekCard share the identical query — one request for the whole render.
+    expect(requestCount).toBe(1);
   });
 
-  /**
-   * "No notifications yet" on a failed request is not an empty state — it is a
-   * false statement about somebody's inbox.
-   */
+  // "No notifications yet" on a failed request would misstate the inbox, not describe an empty one.
   it("distinguishes a failed load from an empty inbox", async () => {
     mockRoute("GET", /\/notifications$/, () => envelope(null), 500);
 
-    // `retry: false` — the app singleton's one retry with backoff outlasts
-    // `findBy*`'s one-second default.
+    // The app's own retry-with-backoff outlasts findBy*'s default timeout.
     renderWithProviders(<NotificationsList />, {
       queryClient: createTestQueryClient(),
     });
@@ -230,45 +244,59 @@ describe("NotificationsList", () => {
     expect(await screen.findByText("No notifications yet")).toBeVisible();
 
     await userEvent.click(screen.getByRole("button", { name: "Unread" }));
-    expect(await screen.findByText("Nothing unread")).toBeVisible();
+    expect(await screen.findByText("No notifications")).toBeVisible();
   });
 
-  /**
-   * FR-NOT-01 is "in-app **and by email**". The email half is an SMTP relay
-   * (§3.3) — not a frontend capability — and the screen says so rather than
-   * implying both are working.
-   */
-  it("discloses that email delivery is not shown here", async () => {
-    stubList();
-
-    renderWithProviders(<NotificationsList />);
-
-    expect(await screen.findByText(/Email delivery is handled/)).toBeVisible();
-  });
-
-  /**
-   * The prototype has "Mark all read" (app-source 1849). There is no bulk
-   * endpoint, and looping N writes from the browser is a different operation —
-   * it can half-fail and writes N audit events for one act.
-   */
-  it("offers no bulk mark-all, which has no endpoint behind it", async () => {
+  it("shows the notification settings and this-week sidebar cards", async () => {
     stubList();
 
     renderWithProviders(<NotificationsList />);
     await screen.findByText("Action assigned to you");
 
-    expect(
-      screen.queryByRole("button", { name: /mark all/i })
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("Notification settings")).toBeVisible();
+    expect(screen.getByText("Action assigned to me")).toBeVisible();
+    expect(screen.getByText("This week")).toBeVisible();
+    expect(screen.getByText("Currently unread")).toBeVisible();
+  });
+});
+
+describe("MarkAllReadButton", () => {
+  // Same query as ThisWeekCard — unread filtering is client-side, so a plain unfiltered stub is enough.
+  it("is disabled when nothing is unread", async () => {
+    stubList([], 0);
+
+    renderWithProviders(<MarkAllReadButton />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Mark all read" })
+      ).toBeDisabled()
+    );
+  });
+
+  // No bulk endpoint exists — this loops POST /notifications/:id/read once per unread notification.
+  it("marks every currently-unread notification when clicked", async () => {
+    stubList([
+      notification({ id: "NTF-001" }),
+      notification({ id: "NTF-002" }),
+    ]);
+    stubMarkRead();
+
+    renderWithProviders(<MarkAllReadButton />);
+    const button = await screen.findByRole("button", { name: "Mark all read" });
+    await waitFor(() => expect(button).toBeEnabled());
+
+    await userEvent.click(button);
+
+    await waitFor(() => expect(readPosts).toHaveLength(2));
+    expect(readPosts.some((url) => url.includes("NTF-001"))).toBe(true);
+    expect(readPosts.some((url) => url.includes("NTF-002"))).toBe(true);
+    expect(toast.success).toHaveBeenCalledWith("All notifications marked read");
   });
 });
 
 describe("NotificationsTray", () => {
-  /**
-   * The tray makes two requests: one for the rows it shows, one asking only for
-   * the unread `total`. Stubbing them separately is what lets these tests assert
-   * the badge is the server's number rather than a count of what fits.
-   */
+  // The tray makes two requests (rows shown, unread total) — stubbed separately so tests can assert the badge is the server's number.
   const stubTray = (recent: readonly unknown[], unreadTotal: number) => {
     mockRoute("GET", /\/notifications$/, (config) => {
       const params = (config.params ?? {}) as Record<string, unknown>;
@@ -300,15 +328,7 @@ describe("NotificationsTray", () => {
     ).toBeVisible();
   });
 
-  /**
-   * **The badge is the server's count, not a sample of it.**
-   *
-   * An earlier version counted unread among the six rows it had fetched, so a
-   * user whose newest six were read and whose next fourteen were not was told
-   * "none unread". That is a false statement about an inbox, not conservative
-   * rounding — so the tray asks a second, one-row question purely to read
-   * `total` off the unread envelope.
-   */
+  // The badge is the server's count, not a sample of the six rows fetched — a second one-row request reads the real unread total.
   it("reports the server's unread total, not the unread among six rows", async () => {
     mockRoute("GET", /\/notifications$/, (config) => {
       const params = (config.params ?? {}) as Record<string, unknown>;

@@ -102,3 +102,22 @@ export const formatPlantTime = (iso: string): string => {
   if (Number.isNaN(parsed)) return "";
   return `${TIME.format(parsed)} ${PLANT_TIME_ZONE_LABEL}`;
 };
+
+// ISO instant → "10 min ago" / "2h ago" / "Yesterday" / "3 d ago" relative to `at` (pass useNow() — a bare new Date() here risks a hydration mismatch); falls back to formatPlantDateTime beyond a week.
+export const formatRelativeTime = (iso: string, at: Date): string => {
+  const parsed = Date.parse(iso);
+  if (Number.isNaN(parsed)) return "";
+
+  const diffMin = Math.round((at.getTime() - parsed) / 60_000);
+  if (diffMin < 1) return "Just now";
+  if (diffMin < 60) return `${diffMin} min ago`;
+
+  const diffHours = Math.round(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays} d ago`;
+
+  return formatPlantDateTime(iso);
+};

@@ -29,9 +29,14 @@ if (!window.matchMedia) {
 }
 
 if (!window.ResizeObserver) {
-  window.ResizeObserver = vi.fn().mockImplementation(() => ({
-    observe: vi.fn(),
-    unobserve: vi.fn(),
-    disconnect: vi.fn(),
-  }));
+  // A real class, not `vi.fn().mockImplementation(() => ({...}))` — floating-ui's
+  // `autoUpdate` (behind `Popover`) does `new ResizeObserver(cb)` directly, and an
+  // arrow function returned from a mock implementation is not itself a
+  // constructor, so that shape threw "is not a constructor" the first time
+  // anything used it.
+  window.ResizeObserver = class {
+    observe = vi.fn();
+    unobserve = vi.fn();
+    disconnect = vi.fn();
+  } as unknown as typeof ResizeObserver;
 }

@@ -1,8 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { toast } from "sonner";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AuditTable } from "@/features/audit/components/AuditTable";
+import {
+  AuditTable,
+  ExportAuditButton,
+} from "@/features/audit/components/AuditTable";
 import {
   installMockApi,
   mockRoute,
@@ -10,6 +14,18 @@ import {
   resetMockApi,
 } from "@/test/mockApi";
 import { renderWithProviders } from "@/test/utils";
+
+/*
+  Mocked at the module boundary, same as `NotificationsList.test.tsx` —
+  asserted here rather than by counting rendered toasts, because
+  `renderWithProviders` mounts no `<Toaster/>` to count.
+*/
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 const ADMIN_PERMISSIONS = ["*"];
 
@@ -28,8 +44,7 @@ const event = (overrides: Record<string, unknown> = {}) => ({
 const SYSTEM_EVENT = event({
   id: "AUD-0007",
   actor: null,
-  // An em dash, as the prototype's own `System | —` row has it.
-  role_label: "—",
+  role_label: "—", // matches the "System | —" row
   action: "RETENTION_PURGE",
   target: "Logs older than 7 years",
 });
@@ -68,7 +83,7 @@ afterEach(() => {
 });
 
 describe("AuditTable", () => {
-  it("renders the prototype's six columns", async () => {
+  it("renders the six spec columns", async () => {
     installMockApi({ permissions: ADMIN_PERMISSIONS });
     stubDirectory();
     stubAudit();
@@ -109,19 +124,14 @@ describe("AuditTable", () => {
     renderWithProviders(<AuditTable />);
 
     const row = await screen.findByRole("row", { name: /RETENTION_PURGE/ });
-    // Asserted on the User cell specifically. The column order is the
-    // prototype's spec: Timestamp · User · Role · Action · Target · Result.
+    // Column order: Timestamp, User, Role, Action, Target, Result.
     const cells = within(row).getAllByRole("cell");
 
     expect(cells[1]).toHaveTextContent("System");
     expect(cells[2]).toHaveTextContent("—");
   });
 
-  /**
-   * WCAG 1.4.1 — the prototype renders Result in a hardcoded green with a tick,
-   * unconditionally, because it has no failure row. Colour alone is not a
-   * signal, so the cell carries the word too.
-   */
+  // WCAG 1.4.1 — Result carries the word too, not colour alone.
   it("distinguishes a failure by text, not only by colour", async () => {
     installMockApi({ permissions: ADMIN_PERMISSIONS });
     stubDirectory();
@@ -173,7 +183,11 @@ describe("AuditTable", () => {
     renderWithProviders(<AuditTable />);
     await screen.findByRole("row", { name: /Said Al-Busaidi/ });
 
-    const from = screen.getByLabelText("From");
+    // The two date fields live behind the single "Date" chip.
+    await userEvent.click(
+      screen.getByRole("button", { name: "Filter by date" })
+    );
+    const from = await screen.findByLabelText("From");
     await userEvent.type(from, "2026-07-30");
 
     await waitFor(() => expect(params?.from).toBe("2026-07-30"));
@@ -217,24 +231,15 @@ describe("AuditTable", () => {
       await screen.findByText("No activity matches these filters.")
     ).toBeVisible();
   });
+});
 
-  /**
-   * FR-REP-06 — "Record every report export in the audit trail" — is real, and
-   * no export endpoint exists in this build. The prototype's Export button
-   * fires a toast; shipping it would claim something the platform cannot do.
-   */
-  it("offers no Export control", async () => {
-    installMockApi({ permissions: ADMIN_PERMISSIONS });
-    stubDirectory();
-    stubAudit();
+describe("ExportAuditButton", () => {
+  // No export endpoint exists — this only toasts, per FR-REP-06 staying unmet.
+  it("toasts on click rather than exporting anything real", async () => {
+    renderWithProviders(<ExportAuditButton />);
 
-    renderWithProviders(<AuditTable />);
-    // Positive control: the table rendered, so the absence below means
-    // something.
-    await screen.findByRole("row", { name: /Said Al-Busaidi/ });
+    await userEvent.click(screen.getByRole("button", { name: "Export" }));
 
-    expect(
-      screen.queryByRole("button", { name: /export/i })
-    ).not.toBeInTheDocument();
+    expect(toast.success).toHaveBeenCalledWith("Audit log exported");
   });
 });

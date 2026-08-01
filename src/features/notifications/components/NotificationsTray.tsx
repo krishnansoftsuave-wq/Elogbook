@@ -20,31 +20,11 @@ import {
   useNotificationTray,
 } from "@/features/notifications/api/queries";
 import { NotificationItem } from "@/features/notifications/components/NotificationItem";
+import { useNow } from "@/hooks/useNow";
 
-/**
- * The header bell — the prototype's tray (`app-source.txt` 191–210).
- *
- * **FR-NOT-01** is "All roles", and this lives in the shared `Header` rather
- * than on any one screen: a notification about an overdue action is only useful
- * if it reaches you while you are doing something else.
- *
- * The badge shows the **server's** unread total, not the unread among the six
- * rows fetched — an earlier version did the latter and announced "none unread"
- * to somebody with fourteen unread below the fold. `useNotificationTray` records
- * what that costs.
- *
- * The Group wrapper around the label is required, not cosmetic: Base UI's label
- * *is* a group label and throws without a group ancestor. Omitting it crashed a
- * whole screen in Phase 1c the moment its menu opened; `Header.tsx` carries the
- * same note.
- */
+// Header bell (FR-NOT-01, all roles). Badge shows the server's unread total, not just the fetched rows. Group wrapper around the label is required — Base UI throws without one.
 interface NotificationsTrayProps {
-  /**
-   * Optionally controlled, so `Header` can keep this and the sub-type pill
-   * mutually exclusive — the prototype closes each when the other opens
-   * (`app-source.txt` 231, 249). Left uncontrolled the tray owns its own state,
-   * which is what every existing caller and test relies on.
-   */
+  /** Optionally controlled so Header can keep this and other menus mutually exclusive; uncontrolled otherwise. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -57,6 +37,7 @@ export const NotificationsTray = ({
   const open = controlledOpen ?? uncontrolledOpen;
   const setOpen = onOpenChange ?? setUncontrolledOpen;
   const { data, isLoading } = useNotificationTray();
+  const now = useNow();
 
   const unread = data?.unreadCount ?? 0;
   const items = data?.items ?? [];
@@ -112,6 +93,7 @@ export const NotificationsTray = ({
               <NotificationItem
                 key={notification.id}
                 notification={notification}
+                at={now}
                 onNavigate={() => setOpen(false)}
               />
             ))}

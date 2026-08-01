@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 interface DataTableProps<TData> {
   table: TanStackTable<TData>;
@@ -24,6 +25,10 @@ interface DataTableProps<TData> {
   caption: string;
   /** Per-row class hook, e.g. to dim a suspended record. */
   getRowClassName?: (row: Row<TData>) => string | undefined;
+  /** Optional styling for the header row — e.g. `AuditTable`'s shaded band. */
+  headerRowClassName?: string;
+  /** `false` drops the wrapper's own border/rounding, for a caller already nesting this in its own bordered container. */
+  bordered?: boolean;
 }
 
 /**
@@ -36,17 +41,19 @@ export const DataTable = <TData,>({
   emptyMessage = "Nothing to show yet.",
   caption,
   getRowClassName,
+  headerRowClassName,
+  bordered = true,
 }: DataTableProps<TData>) => {
   const columnCount = table.getAllLeafColumns().length;
   const rows = table.getRowModel().rows;
 
   return (
-    <div className="overflow-x-auto rounded-md border">
+    <div className={cn("overflow-x-auto", bordered && "rounded-md border")}>
       <Table>
         <caption className="sr-only">{caption}</caption>
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
+            <TableRow key={headerGroup.id} className={headerRowClassName}>
               {headerGroup.headers.map((header) => (
                 <TableHead key={header.id} colSpan={header.colSpan}>
                   {header.isPlaceholder
