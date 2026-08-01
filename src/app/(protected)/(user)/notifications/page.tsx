@@ -1,21 +1,23 @@
 import type { Metadata } from "next";
 
 import { PageHeader } from "@/components/layout/PageHeader";
-import {
-  MarkAllReadButton,
-  NotificationsList,
-} from "@/features/notifications/components/NotificationsList";
+import { NotificationsList } from "@/features/notifications/components/NotificationsList";
 
 export const metadata: Metadata = { title: "Notifications" };
 
-// §7.9 — the notification list, its header "Mark all read" and its two-column body.
+/**
+ * §7.9 — the notification list. The prototype's `notifications` screen
+ * (`app-source.txt` 1846–1873).
+ *
+ * `NotificationsList` records what was and was not ported, including why there
+ * is no "Mark all read".
+ */
 export default function NotificationsPage() {
   return (
     <>
       <PageHeader
         title="Notifications"
-        description="In-app & email alerts"
-        actions={<MarkAllReadButton />}
+        description="Assignments, overdue actions and new summaries addressed to you."
       />
       <NotificationsList />
     </>

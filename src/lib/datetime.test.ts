@@ -4,7 +4,6 @@ import {
   PLANT_TIME_ZONE_LABEL,
   formatPlantDateTime,
   formatPlantTime,
-  formatRelativeTime,
   formatShiftDate,
 } from "@/lib/datetime";
 
@@ -84,46 +83,5 @@ describe("formatPlantDateTime", () => {
 
   it("returns an empty string for an unparseable instant", () => {
     expect(formatPlantDateTime("nope")).toBe("");
-  });
-});
-
-describe("formatRelativeTime", () => {
-  const at = new Date("2026-06-10T12:00:00+00:00");
-
-  it("rounds sub-minute gaps to just now", () => {
-    expect(formatRelativeTime("2026-06-10T11:59:45+00:00", at)).toBe(
-      "Just now"
-    );
-  });
-
-  it("counts minutes under an hour", () => {
-    expect(formatRelativeTime("2026-06-10T11:50:00+00:00", at)).toBe(
-      "10 min ago"
-    );
-  });
-
-  it("counts hours under a day", () => {
-    expect(formatRelativeTime("2026-06-10T09:00:00+00:00", at)).toBe("3h ago");
-  });
-
-  it("names exactly one day back as yesterday", () => {
-    expect(formatRelativeTime("2026-06-09T12:00:00+00:00", at)).toBe(
-      "Yesterday"
-    );
-  });
-
-  it("counts days under a week", () => {
-    expect(formatRelativeTime("2026-06-07T12:00:00+00:00", at)).toBe("3 d ago");
-  });
-
-  /** Beyond a week, "ago" stops being useful and the actual date is. */
-  it("falls back to the plant date-time at a week and beyond", () => {
-    expect(formatRelativeTime("2026-06-01T10:45:00+00:00", at)).toBe(
-      formatPlantDateTime("2026-06-01T10:45:00+00:00")
-    );
-  });
-
-  it("returns an empty string for an unparseable instant", () => {
-    expect(formatRelativeTime("nope", at)).toBe("");
   });
 });
