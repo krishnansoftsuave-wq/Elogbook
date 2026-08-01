@@ -77,6 +77,8 @@ export const API_ENDPOINTS = {
   NOTIFICATIONS: {
     LIST: "/notifications",
     MARK_READ: (id: string) => `/notifications/${id}/read`,
+    /** One write for "Mark all read" rather than the client looping `MARK_READ`. */
+    MARK_ALL_READ: "/notifications/read-all",
   },
 
   /** §7.4 — the assistant. The answer itself is [BACKEND]. */

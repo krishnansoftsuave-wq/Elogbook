@@ -7,17 +7,17 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { CircleCheck, CircleX, Download, TriangleAlert } from "lucide-react";
-import { toast } from "sonner";
 
 import { DataTable } from "@/components/data-table/DataTable";
 import { DataTablePagination } from "@/components/data-table/DataTablePagination";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { useAuditTrail } from "@/features/audit/api/queries";
 import { AuditFilterBar } from "@/features/audit/components/AuditFilterBar";
 import { useAuditFilters } from "@/features/audit/hooks/useAuditFilters";
 import type { AuditEvent } from "@/features/audit/schemas";
+import type { AuditFilters } from "@/features/audit/types";
 import { formatPlantTimestamp, PLANT_TIME_ZONE_LABEL } from "@/lib/datetime";
+import { cn } from "@/lib/utils";
 
 const columnHelper = createColumnHelper<AuditEvent>();
 
@@ -34,20 +34,23 @@ const headerLabel = (text: string) => (
 );
 
 /**
- * The prototype's header "Export" (`app-source.txt` 1648) — it only ever
- * fired a toast there too. **FR-REP-06** — "Record every report export in the
- * audit trail" — is real, and there is still no export endpoint in this
- * build, so this button does the same as the prototype's: nothing but the
- * toast. That is a UI-parity move, not a claim that exporting works; the
- * requirement stays reported unmet until a real endpoint exists to record
- * itself here.
+ * The prototype's header "Export" (`app-source.txt` 1648), which fires
+ * `toast('exported')` for something that never happened — a fabricated
+ * success living inside the product, indistinguishable from a real one. This
+ * build does not repeat that: there is no export endpoint, generating one is
+ * server work ([BACKEND]), and **FR-REP-06** requires every export be
+ * *audited*, so a fake success here would also be a fake audit-trail gap.
+ * Disabled and says why, the same resolution `SummaryExportMenu` uses for the
+ * identical gap on `/summaries`. The requirement stays visible; the
+ * capability does not pretend.
  */
 export const ExportAuditButton = () => (
   <Button
     type="button"
     variant="outline"
     size="sm"
-    onClick={() => toast.success("Audit log exported")}
+    disabled
+    title="Export is generated on the server and is not available in this build (FR-REP-06)."
   >
     <Download aria-hidden />
     Export
@@ -72,9 +75,19 @@ export const ExportAuditButton = () => (
  * has no failure row. Colour alone would fail WCAG 1.4.1 anyway, so the cell
  * carries an icon *and* the word.
  */
-export const AuditTable = () => {
+interface AuditTableProps {
+  /**
+   * Parsed from the page's own `searchParams`, server-side — a bookmarked or
+   * shared audit URL should land on the same filtered view it was copied
+   * from, not the defaults. See `useAuditFilters` for why that read happens
+   * in the page rather than via `useSearchParams()` here.
+   */
+  initialFilters: AuditFilters;
+}
+
+export const AuditTable = ({ initialFilters }: AuditTableProps) => {
   const { filters, queryFilters, setFilter, reset, isFiltered } =
-    useAuditFilters();
+    useAuditFilters(initialFilters);
 
   const { data, isLoading, isFetching, isError } = useAuditTrail(queryFilters);
 
@@ -128,19 +141,15 @@ export const AuditTable = () => {
           const failed = info.getValue() === "failure";
           return (
             <span
-              className={
-                failed
-                  ? "inline-flex items-center gap-1.5 font-medium text-destructive"
-                  : "inline-flex items-center gap-1.5"
-              }
+              className={cn(
+                "inline-flex items-center gap-1.5 font-medium",
+                failed ? "text-destructive" : "text-success"
+              )}
             >
               {failed ? (
                 <CircleX className="size-4 shrink-0" aria-hidden />
               ) : (
-                <CircleCheck
-                  className="size-4 shrink-0 text-primary"
-                  aria-hidden
-                />
+                <CircleCheck className="size-4 shrink-0" aria-hidden />
               )}
               {failed ? "Failure" : "Success"}
             </span>
@@ -162,38 +171,43 @@ export const AuditTable = () => {
   });
 
   return (
-    // One card holding the filter row, table and pagination — the prototype
-    // keeps its chips outside the table's own card (`app-source.txt`
-    // 1649–1660), but a single white surface is the closer match to how the
-    // rest of this build already presents a filtered list (see
-    // `NotificationsList`'s "Your notifications" card).
-    <Card>
-      <CardContent className="flex flex-col gap-4">
-        <AuditFilterBar
-          filters={filters}
-          isFiltered={isFiltered}
-          onChange={setFilter}
-          onReset={reset}
-        />
+    // The filter chips sit on the page background, outside the table's own
+    // card — the prototype's own layout (`app-source.txt` 1649–1660), not the
+    // single merged surface an earlier pass used.
+    <div className="flex min-w-0 flex-col gap-4">
+      <AuditFilterBar
+        filters={filters}
+        isFiltered={isFiltered}
+        onChange={setFilter}
+        onReset={reset}
+      />
 
-        {/*
-          An error is not an empty log. Collapsing the two here would be the worst
-          version of that mistake anywhere in the app: a 500 would render "No
-          activity recorded yet" to somebody reviewing an audit trail, which is a
-          positive false claim about whether anything happened.
-        */}
-        {isError ? (
-          <p
-            role="alert"
-            className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive"
-          >
-            <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
-            The audit log could not be loaded. This is not an empty log —
-            activity may have been recorded that is not shown here. Reload to
-            try again.
-          </p>
-        ) : (
-          <>
+      {/*
+        An error is not an empty log. Collapsing the two here would be the worst
+        version of that mistake anywhere in the app: a 500 would render "No
+        activity recorded yet" to somebody reviewing an audit trail, which is a
+        positive false claim about whether anything happened.
+      */}
+      {isError ? (
+        <p
+          role="alert"
+          className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-sm text-destructive"
+        >
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
+          The audit log could not be loaded. This is not an empty log — activity
+          may have been recorded that is not shown here. Reload to try again.
+        </p>
+      ) : (
+        <>
+          {/*
+            `bg-card` here rather than a `DataTable` prop — `DataTable`'s own
+            wrapper draws the border and rounding already; it has no
+            background of its own, so this plain div supplies one behind it
+            (`body` is `bg-background`, the page's grey-teal, not white)
+            without widening a component every other table in the repo also
+            uses.
+          */}
+          <div className="rounded-md bg-card">
             <DataTable
               table={table}
               isLoading={isLoading}
@@ -207,22 +221,19 @@ export const AuditTable = () => {
               // colour (see globals.css); the earlier `/60` diluted it toward
               // the card's white instead of matching.
               headerRowClassName="bg-muted"
-              // Already inside this card's own border — a second one would
-              // double up.
-              bordered={false}
             />
+          </div>
 
-            <DataTablePagination
-              page={filters.page}
-              pageSize={filters.pageSize}
-              total={data?.total ?? 0}
-              disabled={isFetching}
-              onPageChange={(page) => setFilter("page", page)}
-              onPageSizeChange={(pageSize) => setFilter("pageSize", pageSize)}
-            />
-          </>
-        )}
-      </CardContent>
-    </Card>
+          <DataTablePagination
+            page={filters.page}
+            pageSize={filters.pageSize}
+            total={data?.total ?? 0}
+            disabled={isFetching}
+            onPageChange={(page) => setFilter("page", page)}
+            onPageSizeChange={(pageSize) => setFilter("pageSize", pageSize)}
+          />
+        </>
+      )}
+    </div>
   );
 };

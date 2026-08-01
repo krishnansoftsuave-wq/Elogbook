@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarRange, Search, X } from "lucide-react";
+import { CalendarRange, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,9 +43,13 @@ const parseAction = (value: unknown): AuditFilters["action"] => {
 const formatFilterDate = (isoDate: string): string =>
   formatShiftDate(isoDate.replaceAll("-", ""));
 
-/** Shared chip look for all three triggers — compact, pill-shaped, white. */
+/**
+ * Shared chip look for all three triggers — compact, white, `border-radius:
+ * 6px` (`rounded-sm` in this theme's scale), not the fully-rounded pill an
+ * earlier pass used.
+ */
 const CHIP_TRIGGER_CLASS =
-  "h-8 w-fit gap-1.5 rounded-full border-input bg-card px-3 text-sm font-normal";
+  "h-8 w-fit gap-1.5 rounded-sm border-input bg-card px-3 text-sm font-normal";
 
 /**
  * The prototype's three chips — User, Action, Date (`app-source.txt` 1650) —
@@ -61,13 +65,7 @@ const CHIP_TRIGGER_CLASS =
  * `/users` is the honest source and an Administrator can already read it.
  *
  * ⚠️ System-originated rows (`actor: null`, the retention purge) cannot be
- * reached by the User filter, because they have no username to select. The
- * search box finds them by the word "System", which is what the table renders.
- *
- * **The free-text search has no prototype counterpart.** Kept, because
- * narrowing by target or user id is real capability the three chips alone
- * cannot offer — the prototype's chips are non-functional, so it never had to
- * choose between the two.
+ * reached by the User filter, because they have no username to select.
  */
 export const AuditFilterBar = ({
   filters,
@@ -90,24 +88,6 @@ export const AuditFilterBar = ({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="relative w-full max-w-[220px]">
-        <Search
-          className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-          aria-hidden
-        />
-        <label htmlFor="audit-search" className="sr-only">
-          Search the audit log
-        </label>
-        <Input
-          id="audit-search"
-          type="search"
-          placeholder="Search"
-          className="h-8 rounded-full bg-card ps-9"
-          value={filters.search}
-          onChange={(event) => onChange("search", event.target.value)}
-        />
-      </div>
-
       <Select
         value={filters.username}
         onValueChange={(value) => onChange("username", String(value))}

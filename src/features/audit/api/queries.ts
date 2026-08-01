@@ -15,7 +15,6 @@ import { api } from "@/lib/api-client";
 const toParams = (filters: AuditFilters) => ({
   page: filters.page,
   pageSize: filters.pageSize,
-  ...(filters.search ? { search: filters.search } : {}),
   ...(filters.username !== "all" ? { username: filters.username } : {}),
   ...(filters.action !== "all" ? { action: filters.action } : {}),
   ...(filters.from ? { from: filters.from } : {}),

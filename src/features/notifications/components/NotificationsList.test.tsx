@@ -76,8 +76,23 @@ const stubMarkRead = () => {
   );
 };
 
+let markAllReadCalls = 0;
+
+const stubMarkAllRead = (markedCount = 1) => {
+  mockRoute(
+    "POST",
+    /\/notifications\/read-all$/,
+    () => {
+      markAllReadCalls += 1;
+      return envelope({ markedCount });
+    },
+    200
+  );
+};
+
 beforeEach(() => {
   readPosts = [];
+  markAllReadCalls = 0;
   vi.clearAllMocks();
   installMockApi();
 });
@@ -193,26 +208,32 @@ describe("NotificationsList", () => {
   });
 
   /**
-   * The tab re-filters the one `pageSize: MAX_PAGE_SIZE` page already fetched
-   * — the same page `MarkAllReadButton` and `ThisWeekCard` ask for — rather
-   * than asking the server again with `unread=true`. An earlier version did
-   * the latter, which put a *different* query key on the wire for the same
-   * screen's three consumers and turned one page load into three requests
-   * where React Query would otherwise have deduped one.
+   * The tab asks the server to filter, rather than fetching one page and
+   * slicing it client-side. An earlier version did the latter with a single
+   * `pageSize: MAX_PAGE_SIZE` fetch — cheap in requests, but wrong the moment
+   * a user had more than `MAX_PAGE_SIZE` notifications: the pagination
+   * footer's client-computed total and `NotificationsOverviewCard`'s
+   * server-reported total could disagree on screen. Server-side filtering
+   * costs a real second request on tab switch, and reports a total that is
+   * always correct at any scale.
    */
-  it("filters to unread client-side from the one page already fetched, with no second request", async () => {
-    let requestCount = 0;
-    mockRoute("GET", /\/notifications$/, () => {
-      requestCount += 1;
-      return paginatedEnvelope([
-        notification(), // unread by default
-        notification({
-          id: "NTF-002",
-          title: "Shift summary ready",
-          body: "Already dealt with",
-          read: true,
-        }),
-      ]);
+  it("asks the server to filter to unread rather than filtering client-side", async () => {
+    let lastParams: Record<string, unknown> | undefined;
+    mockRoute("GET", /\/notifications$/, (config) => {
+      lastParams = (config.params ?? {}) as Record<string, unknown>;
+      const items =
+        lastParams.unread === true
+          ? [notification()]
+          : [
+              notification(),
+              notification({
+                id: "NTF-002",
+                title: "Shift summary ready",
+                body: "Already dealt with",
+                read: true,
+              }),
+            ];
+      return paginatedEnvelope(items, { total: items.length });
     });
 
     renderWithProviders(<NotificationsList />);
@@ -224,9 +245,13 @@ describe("NotificationsList", () => {
       "aria-pressed",
       "true"
     );
-    expect(screen.getByText("Action assigned to you")).toBeVisible();
+    await waitFor(() => expect(lastParams?.unread).toBe(true));
+    expect(await screen.findByText("Action assigned to you")).toBeVisible();
     expect(screen.queryByText("Shift summary ready")).not.toBeInTheDocument();
 
+    // Back to "All" — the query for these exact params was already fetched
+    // once above, so this may come from React Query's cache rather than a
+    // fresh round trip; the content is what matters, not another network call.
     await userEvent.click(screen.getByRole("button", { name: "All" }));
     expect(screen.getByRole("button", { name: "All" })).toHaveAttribute(
       "aria-pressed",
@@ -236,11 +261,7 @@ describe("NotificationsList", () => {
       "aria-pressed",
       "false"
     );
-    expect(screen.getByText("Shift summary ready")).toBeVisible();
-
-    // `NotificationsList` and its own `ThisWeekCard` share the identical
-    // query — one request for the whole render, tab switches included.
-    expect(requestCount).toBe(1);
+    expect(await screen.findByText("Shift summary ready")).toBeVisible();
   });
 
   /**
@@ -273,7 +294,7 @@ describe("NotificationsList", () => {
   });
 
   /** The prototype's right-hand column (app-source.txt 1859–1871). */
-  it("shows the notification settings and this-week sidebar cards", async () => {
+  it("shows the notification settings and overview sidebar cards", async () => {
     stubList();
 
     renderWithProviders(<NotificationsList />);
@@ -281,16 +302,17 @@ describe("NotificationsList", () => {
 
     expect(screen.getByText("Notification settings")).toBeVisible();
     expect(screen.getByText("Action assigned to me")).toBeVisible();
-    expect(screen.getByText("This week")).toBeVisible();
+    expect(screen.getByText("Notifications overview")).toBeVisible();
     expect(screen.getByText("Currently unread")).toBeVisible();
   });
 });
 
 describe("MarkAllReadButton", () => {
   /**
-   * Same query as `ThisWeekCard` — the unread filtering happens client-side
-   * over the full fetched page, not via the server's `unread` param — so a
-   * plain unfiltered stub is enough here.
+   * A one-row `{ unreadOnly: true, pageSize: 1 }` question, the same shape
+   * `useNotificationTray` already asks for its badge — reading `total` off
+   * the envelope rather than sampling a fetched page, so this is right at
+   * any scale.
    */
   it("is disabled when nothing is unread", async () => {
     stubList([], 0);
@@ -305,16 +327,12 @@ describe("MarkAllReadButton", () => {
   });
 
   /**
-   * The prototype's header "Mark all read" (app-source.txt 1849). There is no
-   * bulk endpoint — only `POST /notifications/:id/read` — so this loops that
-   * mutation once per unread notification.
+   * The prototype's header "Mark all read" (app-source.txt 1849) — one
+   * `POST /notifications/read-all`, not one `POST /:id/read` per unread row.
    */
-  it("marks every currently-unread notification when clicked", async () => {
-    stubList([
-      notification({ id: "NTF-001" }),
-      notification({ id: "NTF-002" }),
-    ]);
-    stubMarkRead();
+  it("marks every unread notification in a single request", async () => {
+    stubList([notification({ id: "NTF-001" })], 2);
+    stubMarkAllRead(2);
 
     renderWithProviders(<MarkAllReadButton />);
     const button = await screen.findByRole("button", { name: "Mark all read" });
@@ -322,9 +340,7 @@ describe("MarkAllReadButton", () => {
 
     await userEvent.click(button);
 
-    await waitFor(() => expect(readPosts).toHaveLength(2));
-    expect(readPosts.some((url) => url.includes("NTF-001"))).toBe(true);
-    expect(readPosts.some((url) => url.includes("NTF-002"))).toBe(true);
+    await waitFor(() => expect(markAllReadCalls).toBe(1));
     expect(toast.success).toHaveBeenCalledWith("All notifications marked read");
   });
 });

@@ -1,24 +1,22 @@
 "use client";
 
+import type { SVGProps } from "react";
 import { useState } from "react";
 import {
+  Activity,
   Bell,
   BellOff,
-  CalendarClock,
   CheckCheck,
-  Settings2,
   TriangleAlert,
 } from "lucide-react";
-import { toast } from "sonner";
 
 import { EmptyState } from "@/components/EmptyState";
 import { DataTablePagination } from "@/components/data-table/DataTablePagination";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/constants/api";
-import { useMarkNotificationRead } from "@/features/notifications/api/mutations";
+import { useMarkAllNotificationsRead } from "@/features/notifications/api/mutations";
 import { useNotificationsList } from "@/features/notifications/api/queries";
 import { NotificationItem } from "@/features/notifications/components/NotificationItem";
 import type { NotificationFilters } from "@/features/notifications/types";
@@ -31,10 +29,12 @@ import { cn } from "@/lib/utils";
  *
  * The prototype's layout is a two-column page: the list on the left, and a
  * right-hand column carrying "Mark all read" (in the header), a per-kind
- * "Notification settings" card, and a "This week" stat panel. All three are
- * ported below (`MarkAllReadButton`, `NotificationSettingsCard`,
- * `ThisWeekCard`) for visual parity; see each for what is real data and what
- * is static content carried over from the prototype as-is.
+ * "Notification settings" card, and a stat panel the prototype calls "This
+ * week" (`NotificationsOverviewCard` here — see its own doc for why the name
+ * changed). All three are ported below (`MarkAllReadButton`,
+ * `NotificationSettingsCard`, `NotificationsOverviewCard`) for visual parity;
+ * see each for what is real data and what is static content carried over
+ * from the prototype as-is.
  *
  * ## Not a DataTable
  *
@@ -50,51 +50,39 @@ const INITIAL_FILTERS: NotificationFilters = {
 };
 
 /**
- * The prototype's header "Mark all read" (`app-source.txt` 1849). There is no
- * bulk endpoint — only `POST /notifications/:id/read` — so this loops the
- * same mutation a row's own click uses, one request per currently-unread
- * notification, and lets each one invalidate the shared list/tray queries as
- * it lands. Rendered from `NotificationsPage` via `PageHeader`'s `actions`
- * slot, matching the prototype's placement in the page header row.
+ * The prototype's header "Mark all read" (`app-source.txt` 1849) — one
+ * `POST /notifications/read-all` rather than looping `POST /:id/read` once
+ * per unread row. The loop this replaced turned a single click into N
+ * requests, N cache invalidations, and let the action half-succeed with no
+ * atomic outcome to report (NFR-12); the bulk endpoint does the whole thing
+ * server-side in one write. Rendered from `NotificationsPage` via
+ * `PageHeader`'s `actions` slot, matching the prototype's placement in the
+ * page header row.
  *
- * **Same query, same params, as `ThisWeekCard`'s — deliberately.** This
- * button and that card both mount on first paint and both want "every
- * notification this user has"; an earlier version asked the server to do the
- * unread filtering (`unreadOnly: true`) instead of filtering the fetched page
- * client-side, which put a *different* cache key on the wire and turned one
- * page load into two full `pageSize=100` requests where React Query would
- * otherwise have deduped one.
+ * **One row, purely to read `total` off the envelope** — the same shape
+ * `useNotificationTray` already uses for its badge, and for the same reason:
+ * "is anything unread" sampled from a fetched page is a sample, not an
+ * answer. A user with more unread notifications than fit in one fetched page
+ * would otherwise see this button go disabled while their inbox still had
+ * unread rows sitting past the fetched window.
  */
 export const MarkAllReadButton = () => {
   const { data, isFetching } = useNotificationsList({
     page: 1,
-    pageSize: MAX_PAGE_SIZE,
-    unreadOnly: false,
+    pageSize: 1,
+    unreadOnly: true,
   });
-  const markRead = useMarkNotificationRead();
+  const markAllRead = useMarkAllNotificationsRead();
 
-  const unreadIds =
-    data?.items.filter((item) => !item.read).map((item) => item.id) ?? [];
-
-  const markAll = async () => {
-    const results = await Promise.allSettled(
-      unreadIds.map((id) => markRead.mutateAsync(id))
-    );
-    // Per-id failures already surface through the mutation's own error toast
-    // (see useMarkNotificationRead); this one is only for the act as a whole
-    // succeeding, mirroring the prototype's own toast on this button.
-    if (results.length > 0 && results.every((r) => r.status === "fulfilled")) {
-      toast.success("All notifications marked read");
-    }
-  };
+  const hasUnread = (data?.total ?? 0) > 0;
 
   return (
     <Button
       type="button"
       variant="secondary"
       size="sm"
-      onClick={markAll}
-      disabled={isFetching || markRead.isPending || unreadIds.length === 0}
+      onClick={() => markAllRead.mutate()}
+      disabled={isFetching || markAllRead.isPending || !hasUnread}
     >
       <CheckCheck aria-hidden />
       Mark all read
@@ -106,11 +94,27 @@ export const MarkAllReadButton = () => {
  * The prototype's settings list (`app-source.txt` 1861, 1863) — fixed copy,
  * not fetched or computed, so it lives here rather than behind a data layer.
  * The real per-user matrix is `/admin/notification-permissions`, wildcard-gated
- * (Administrator only) with no self-read form yet for a signed-in user to view
- * their own row; that is Phase 3. The switch itself is real and locally
- * interactive (flips per row on click), but nothing persists it — there is
- * nowhere to write. Every row starts "on", matching "You currently receive".
+ * (Administrator only) — an Administrator's setting, not this signed-in user's
+ * to flip. An earlier version rendered an interactive `Switch` here that
+ * toggled local state and persisted nothing, which let an end user "turn off"
+ * a permission only the Administrator can actually change — a control that
+ * lied about what a click did. The prototype's own row (1863) is a static
+ * dot, not a toggle, so this matches that until Phase 3 gives a signed-in
+ * user their own read form for this matrix.
  */
+/**
+ * The prototype's `material-icons` `settings` glyph — a solid gear, not an
+ * outline. Lucide has no filled variant, and its stroked `Settings` read as a
+ * visibly different icon next to the prototype's, so this is the actual
+ * glyph path (Google's `material-design-icons`, Apache-2.0), traced once
+ * here rather than pulling in the whole icon font for one icon.
+ */
+const SettingsGlyph = (props: SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden {...props}>
+    <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z" />
+  </svg>
+);
+
 const NOTIFICATION_SETTINGS: readonly { label: string; channels: string }[] = [
   { label: "Action assigned to me", channels: "In-app, Email" },
   { label: "Action overdue", channels: "In-app" },
@@ -120,17 +124,18 @@ const NOTIFICATION_SETTINGS: readonly { label: string; channels: string }[] = [
 ];
 
 const NotificationSettingsCard = () => {
-  const [enabled, setEnabled] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(
-      NOTIFICATION_SETTINGS.map((setting) => [setting.label, true])
-    )
-  );
-
   return (
     <Card>
       <CardHeader className="border-b">
         <CardTitle className="flex items-center gap-2 text-base">
-          <Settings2 className="size-4 text-primary" aria-hidden />
+          {/*
+            The prototype's raw `#0E8C81`, not `--primary` (`#0D857B` —
+            `globals.css`'s ratified AA-adjustment for *text*). WCAG's non-text
+            contrast floor is 3:1, not 4.5:1, and an icon clears that at either
+            shade — so matching the prototype's exact teal here doesn't
+            reopen the accessibility gap that adjustment exists for.
+          */}
+          <SettingsGlyph className="size-3.5 text-[#0E8C81]" />
           Notification settings
         </CardTitle>
       </CardHeader>
@@ -144,16 +149,16 @@ const NotificationSettingsCard = () => {
             className="flex items-center justify-between gap-3 py-2.5 text-sm last:pb-0"
           >
             <span className="flex items-center gap-2">
-              <Switch
-                size="sm"
-                aria-label={setting.label}
-                checked={enabled[setting.label]}
-                onCheckedChange={(checked) =>
-                  setEnabled((current) => ({
-                    ...current,
-                    [setting.label]: checked,
-                  }))
-                }
+              {/*
+                A static dot, not a `Switch` — the prototype's own row (1863)
+                isn't a toggle either. This is an Administrator-owned setting
+                (`/admin/notification-permissions`, FR-NOT-01); a switch this
+                user could flip would persist nothing and lie about what the
+                click did.
+              */}
+              <span
+                aria-hidden
+                className="size-2 shrink-0 rounded-full bg-success"
               />
               {setting.label}
             </span>
@@ -168,21 +173,23 @@ const NotificationSettingsCard = () => {
 };
 
 /**
- * "Avg. response time" has no equivalent in the notification data at all —
- * there is no second timestamp anywhere (only `created_at` and a `read`
- * boolean) to measure a response against, so it stays fixed copy, same as
- * the settings list above.
+ * The prototype's "This week" panel (`app-source.txt` 1866), retitled.
+ *
+ * **"Avg. response time" is gone.** There is no second timestamp anywhere in
+ * a notification (only `created_at` and a `read` boolean) to measure a
+ * response against — nothing here can produce that number, fixed or
+ * otherwise, so it was fabricated copy rather than fixed copy.
+ *
+ * **Not "This week" either.** None of the three remaining rows window by
+ * date — "Notifications received" is the server's all-time total for this
+ * user, and "Currently unread"/"Actioned" are counted off the same
+ * unwindowed page. Labelling that "This week" was a false claim about scope,
+ * not just a missing feature; the API has no date-range filter to build a
+ * real one against yet (`GET /notifications` takes `unread`, not `from`/`to`
+ * — unlike `/audit`, which does). Retitled to say what these numbers
+ * actually are instead.
  */
-const AVG_RESPONSE_TIME_THIS_WEEK = "3.4 h";
-
-/**
- * The prototype's "This week" panel (`app-source.txt` 1866) — every number
- * but one is real, counted from the same rows `NotificationsList` renders
- * rather than a separate stats endpoint: "Notifications received" is the
- * server's total, "Currently unread" and "Actioned" (`action_completed`
- * notifications) are counted client-side off the full page fetched here.
- */
-const ThisWeekCard = () => {
+const NotificationsOverviewCard = () => {
   const { data } = useNotificationsList({
     page: 1,
     pageSize: MAX_PAGE_SIZE,
@@ -197,15 +204,14 @@ const ThisWeekCard = () => {
       "Actioned",
       String(items.filter((item) => item.kind === "action_completed").length),
     ],
-    ["Avg. response time", AVG_RESPONSE_TIME_THIS_WEEK],
   ] as const;
 
   return (
     <Card>
       <CardHeader className="border-b">
         <CardTitle className="flex items-center gap-2 text-base">
-          <CalendarClock className="size-4 text-primary" aria-hidden />
-          This week
+          <Activity className="size-4 text-primary" aria-hidden />
+          Notifications overview
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col divide-y divide-border">
@@ -227,20 +233,20 @@ export const NotificationsList = () => {
   const [filters, setFilters] = useState<NotificationFilters>(INITIAL_FILTERS);
 
   /**
-   * One query — `page: 1, pageSize: MAX_PAGE_SIZE, unreadOnly: false` — the
-   * same shape `MarkAllReadButton` and `ThisWeekCard` ask for, so React Query
-   * serves this screen's three consumers from a single network request
-   * instead of three. The `All`/`Unread` tab and the on-screen page are both
-   * answered from this one fetched set rather than round-tripping the server
-   * again: nobody's notification count gets near `MAX_PAGE_SIZE`, so "the
-   * whole list" and "page 1 of 100" are the same fetch. A real backend with
-   * unbounded history would need this to go back to server-side paging.
+   * Server-side paging and filtering — `page`, `pageSize` and `unreadOnly`
+   * all go on the wire, same as every other list in the app. An earlier
+   * version fetched one `pageSize: MAX_PAGE_SIZE` page up front and paged
+   * and filtered it client-side, trading a real page for a same-shape query
+   * `MarkAllReadButton`/`NotificationsOverviewCard` could share. That broke
+   * past `MAX_PAGE_SIZE` notifications: the pagination footer showed the
+   * count of whatever fit in that one fetched page while
+   * `NotificationsOverviewCard`'s own `data.total` showed the server's real
+   * count — two different totals on one screen. `data.total` already answers
+   * "how many, for this filter" per request; there is nothing to compute
+   * client-side.
    */
-  const { data, isLoading, isFetching, isError } = useNotificationsList({
-    page: 1,
-    pageSize: MAX_PAGE_SIZE,
-    unreadOnly: false,
-  });
+  const { data, isLoading, isFetching, isError } =
+    useNotificationsList(filters);
   const now = useNow();
 
   const setFilter = <TKey extends keyof NotificationFilters>(
@@ -256,15 +262,8 @@ export const NotificationsList = () => {
     }));
   };
 
-  const allItems = data?.items ?? [];
-  const filteredItems = filters.unreadOnly
-    ? allItems.filter((item) => !item.read)
-    : allItems;
-  const total = filteredItems.length;
-  const items = filteredItems.slice(
-    (filters.page - 1) * filters.pageSize,
-    filters.page * filters.pageSize
-  );
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -392,7 +391,7 @@ export const NotificationsList = () => {
 
         <div className="flex flex-col gap-6">
           <NotificationSettingsCard />
-          <ThisWeekCard />
+          <NotificationsOverviewCard />
         </div>
       </div>
     </div>

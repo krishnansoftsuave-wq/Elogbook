@@ -29,8 +29,8 @@ interface DataTableProps<TData> {
   headerRowClassName?: string;
   /**
    * `false` drops the wrapper's own border/rounding — for a caller that
-   * already nests this inside its own bordered container (`AuditTable`'s
-   * card), where the two borders would otherwise double up.
+   * already nests this inside its own bordered container, where the two
+   * borders would otherwise double up.
    */
   bordered?: boolean;
 }

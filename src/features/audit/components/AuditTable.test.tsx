@@ -7,6 +7,7 @@ import {
   AuditTable,
   ExportAuditButton,
 } from "@/features/audit/components/AuditTable";
+import { AUDIT_FILTERS_DEFAULTS } from "@/features/audit/hooks/auditFilterParams";
 import {
   installMockApi,
   mockRoute,
@@ -25,6 +26,20 @@ vi.mock("sonner", () => ({
     success: vi.fn(),
     error: vi.fn(),
   },
+}));
+
+/*
+  `useAuditFilters` mirrors filter state into the URL via `router.replace`.
+  `vi.hoisted` gives the mock factory below a `replace` it can close over
+  that is also the one test bodies import — the factory itself runs on every
+  `useRouter()` call, so a fresh `vi.fn()` there would be a different spy
+  per render and nothing a test could assert calls against.
+*/
+const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/admin/audit",
+  useRouter: () => ({ replace }),
 }));
 
 const ADMIN_PERMISSIONS = ["*"];
@@ -81,6 +96,7 @@ const stubAudit = (items: readonly unknown[] = [event()]) => {
 
 afterEach(() => {
   resetMockApi();
+  replace.mockClear();
 });
 
 describe("AuditTable", () => {
@@ -89,7 +105,7 @@ describe("AuditTable", () => {
     stubDirectory();
     stubAudit();
 
-    renderWithProviders(<AuditTable />);
+    renderWithProviders(<AuditTable initialFilters={AUDIT_FILTERS_DEFAULTS} />);
 
     // The timestamp header names the clock, because the whole app is on one.
     expect(
@@ -105,7 +121,7 @@ describe("AuditTable", () => {
     stubDirectory();
     stubAudit();
 
-    renderWithProviders(<AuditTable />);
+    renderWithProviders(<AuditTable initialFilters={AUDIT_FILTERS_DEFAULTS} />);
 
     const row = await screen.findByRole("row", { name: /Said Al-Busaidi/ });
     expect(within(row).getByText("Operator")).toBeVisible();
@@ -122,7 +138,7 @@ describe("AuditTable", () => {
     stubDirectory();
     stubAudit([SYSTEM_EVENT]);
 
-    renderWithProviders(<AuditTable />);
+    renderWithProviders(<AuditTable initialFilters={AUDIT_FILTERS_DEFAULTS} />);
 
     const row = await screen.findByRole("row", { name: /RETENTION_PURGE/ });
     // Asserted on the User cell specifically. The column order is the
@@ -143,7 +159,7 @@ describe("AuditTable", () => {
     stubDirectory();
     stubAudit([event(), FAILED_LOGIN]);
 
-    renderWithProviders(<AuditTable />);
+    renderWithProviders(<AuditTable initialFilters={AUDIT_FILTERS_DEFAULTS} />);
 
     const failed = await screen.findByRole("row", { name: /Hamed Al-Siyabi/ });
     expect(within(failed).getByText("Failure")).toBeVisible();
@@ -152,7 +168,7 @@ describe("AuditTable", () => {
     expect(within(succeeded).getByText("Success")).toBeVisible();
   });
 
-  it("sends the filters as request params", async () => {
+  it("sends a date range the server can bound on, dropping unused sentinels", async () => {
     installMockApi({ permissions: ADMIN_PERMISSIONS });
     stubDirectory();
 
@@ -162,31 +178,7 @@ describe("AuditTable", () => {
       return paginatedEnvelope([event()]);
     });
 
-    renderWithProviders(<AuditTable />);
-    await screen.findByRole("row", { name: /Said Al-Busaidi/ });
-
-    await userEvent.type(
-      screen.getByLabelText("Search the audit log"),
-      "XV-118"
-    );
-
-    await waitFor(() => expect(params?.search).toBe("XV-118"));
-    // The `all` sentinels are dropped rather than sent.
-    expect(params).not.toHaveProperty("action");
-    expect(params).not.toHaveProperty("username");
-  });
-
-  it("sends a date range the server can bound on", async () => {
-    installMockApi({ permissions: ADMIN_PERMISSIONS });
-    stubDirectory();
-
-    let params: Record<string, unknown> | undefined;
-    mockRoute("GET", /\/audit$/, (config) => {
-      params = config.params;
-      return paginatedEnvelope([event()]);
-    });
-
-    renderWithProviders(<AuditTable />);
+    renderWithProviders(<AuditTable initialFilters={AUDIT_FILTERS_DEFAULTS} />);
     await screen.findByRole("row", { name: /Said Al-Busaidi/ });
 
     // The two date fields live behind the single "Date" chip.
@@ -197,6 +189,9 @@ describe("AuditTable", () => {
     await userEvent.type(from, "2026-07-30");
 
     await waitFor(() => expect(params?.from).toBe("2026-07-30"));
+    // The `all` sentinels are dropped rather than sent.
+    expect(params).not.toHaveProperty("action");
+    expect(params).not.toHaveProperty("username");
   });
 
   /**
@@ -209,7 +204,7 @@ describe("AuditTable", () => {
     stubDirectory();
     mockRoute("GET", /\/audit$/, () => paginatedEnvelope([]), 500);
 
-    renderWithProviders(<AuditTable />);
+    renderWithProviders(<AuditTable initialFilters={AUDIT_FILTERS_DEFAULTS} />);
 
     // The shared client retries a read once with a ~1s backoff.
     const alert = await screen.findByRole("alert", undefined, {
@@ -225,32 +220,99 @@ describe("AuditTable", () => {
     stubDirectory();
     stubAudit([]);
 
-    renderWithProviders(<AuditTable />);
+    renderWithProviders(<AuditTable initialFilters={AUDIT_FILTERS_DEFAULTS} />);
 
     expect(
       await screen.findByText("No activity has been recorded yet.")
     ).toBeVisible();
 
-    await userEvent.type(screen.getByLabelText("Search the audit log"), "zzz");
+    // The two date fields live behind the single "Date" chip.
+    await userEvent.click(
+      screen.getByRole("button", { name: "Filter by date" })
+    );
+    const from = await screen.findByLabelText("From");
+    await userEvent.type(from, "2026-07-30");
 
     expect(
       await screen.findByText("No activity matches these filters.")
     ).toBeVisible();
   });
+
+  /**
+   * A shared or bookmarked audit URL must land on the same filtered view it
+   * was copied from — `initialFilters` is how `AdminAuditPage` hands the
+   * inbound `searchParams` down, and this is what proves the table actually
+   * opens filtered rather than defaulting and only picking the URL up later.
+   */
+  it("seeds from initialFilters, so a shared audit URL opens already filtered", async () => {
+    installMockApi({ permissions: ADMIN_PERMISSIONS });
+    stubDirectory();
+
+    let params: Record<string, unknown> | undefined;
+    mockRoute("GET", /\/audit$/, (config) => {
+      params = config.params;
+      return paginatedEnvelope([event()]);
+    });
+
+    renderWithProviders(
+      <AuditTable
+        initialFilters={{
+          ...AUDIT_FILTERS_DEFAULTS,
+          username: "said.albusaidi",
+        }}
+      />
+    );
+
+    // The chip itself exists immediately (its placeholder does); the display
+    // name it resolves `username` to depends on the directory query landing.
+    const userChip = await screen.findByRole("combobox", {
+      name: "Filter by user",
+    });
+    await waitFor(() => expect(userChip).toHaveTextContent("Said Al-Busaidi"));
+    await waitFor(() => expect(params?.username).toBe("said.albusaidi"));
+  });
+
+  /**
+   * The other half of the round trip: a filter picked here has to reach the
+   * URL, replacing rather than pushing so narrowing a filter does not fill
+   * the back button with one entry per click.
+   */
+  it("mirrors a filter change into the URL via router.replace", async () => {
+    installMockApi({ permissions: ADMIN_PERMISSIONS });
+    stubDirectory();
+    stubAudit();
+
+    renderWithProviders(<AuditTable initialFilters={AUDIT_FILTERS_DEFAULTS} />);
+    await screen.findByRole("row", { name: /Said Al-Busaidi/ });
+    replace.mockClear();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Filter by date" })
+    );
+    const from = await screen.findByLabelText("From");
+    await userEvent.type(from, "2026-07-30");
+
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(
+        expect.stringContaining("from=2026-07-30"),
+        expect.objectContaining({ scroll: false })
+      )
+    );
+  });
 });
 
 describe("ExportAuditButton", () => {
   /**
-   * The prototype's header "Export" (`app-source.txt` 1648) only ever fired a
-   * toast — there is still no export endpoint in this build, so this button
-   * does the same thing rather than nothing. FR-REP-06 stays reported unmet;
-   * this is UI parity with the prototype, not a claim that exporting works.
+   * FR-REP-06 requires every export be audited, and there is no export
+   * endpoint in this build to audit — so the button is disabled rather than
+   * firing the prototype's toast for something that did not happen. A fake
+   * success here would be exactly the false claim `AuditTable` itself refuses
+   * to make for a 500 (see "says the log could not be loaded" above).
    */
-  it("toasts on click rather than exporting anything real", async () => {
+  it("is disabled instead of claiming a fake export happened", () => {
     renderWithProviders(<ExportAuditButton />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Export" }));
-
-    expect(toast.success).toHaveBeenCalledWith("Audit log exported");
+    expect(screen.getByRole("button", { name: "Export" })).toBeDisabled();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 });

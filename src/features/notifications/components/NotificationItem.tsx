@@ -18,7 +18,7 @@ import type {
   Notification,
   NotificationKind,
 } from "@/features/notifications/schemas";
-import { formatRelativeTime } from "@/lib/datetime";
+import { formatPlantTimestamp, formatRelativeTime } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 
 /**
@@ -48,13 +48,28 @@ const KIND_ICON: Record<NotificationKind, LucideIcon> = {
   handover_note: ArrowRightLeft,
 };
 
-/** The icon badge's circle colour — one per kind, mirroring the prototype's
- * per-notification `color` field without carrying a hex on the wire. */
+/**
+ * The icon badge's circle colour — one per kind, mirroring the prototype's
+ * per-notification `color` field without carrying a hex on the wire.
+ *
+ * The four FR-NOT-01 kinds use `globals.css`'s contrast-tuned semantic
+ * tokens, not raw Tailwind palette colours: `--warning`/`--success` (and
+ * `--destructive`/`--primary`, already tokens) are measured to clear 4.5:1 on
+ * their own tint the way a bare `amber-600`/`emerald-600` never was.
+ *
+ * **The three prototype-only kinds stay on raw Tailwind colour for now —
+ * deliberately, not an oversight.** `action_completed` mapped onto
+ * `--success` would collide with `report_ready`, now the only kind that owns
+ * it; `handover_note`'s violet has no token at all. Both are DS-9.3 palette
+ * calls ("never invent against it") that need the design-system owner, not a
+ * guess made here to close a lint warning.
+ */
 const KIND_ACCENT: Record<NotificationKind, string> = {
-  action_assigned: "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+  action_assigned: "bg-warning/15 text-warning",
   action_overdue: "bg-destructive/15 text-destructive",
   summary_ready: "bg-primary/15 text-primary",
-  report_ready: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+  report_ready: "bg-success/15 text-success",
+  // Prototype-only, unresolved DS-9.3 colours — see the doc comment above.
   comment_added: "bg-sky-500/15 text-sky-600 dark:text-sky-400",
   action_completed: "bg-green-500/15 text-green-600 dark:text-green-400",
   handover_note: "bg-violet-500/15 text-violet-600 dark:text-violet-400",
@@ -148,9 +163,22 @@ export const NotificationItem = ({
             <span className="sr-only">Unread</span>
           </>
         )}
-        <span className="text-2xs whitespace-nowrap text-muted-foreground">
-          {at ? formatRelativeTime(notification.createdAt, at) : null}
-        </span>
+        {/*
+          `dateTime` and `title` carry the machine-readable/exact instant a
+          bare "2h ago" doesn't — under 7 days there is otherwise nothing on
+          this row a screen reader or a hover can resolve to an actual date.
+        */}
+        {at ? (
+          <time
+            dateTime={notification.createdAt}
+            title={formatPlantTimestamp(notification.createdAt)}
+            className="text-2xs whitespace-nowrap text-muted-foreground"
+          >
+            {formatRelativeTime(notification.createdAt, at)}
+          </time>
+        ) : (
+          <span className="text-2xs whitespace-nowrap text-muted-foreground" />
+        )}
       </span>
     </>
   );

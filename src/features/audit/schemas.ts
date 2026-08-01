@@ -144,23 +144,19 @@ export const auditListResponseSchema = envelopeSchema(
 );
 
 /**
- * The prototype's three filter chips — User, Action, Date (`app-source.txt`
- * 1650) — plus free text.
+ * The prototype's three filter chips, exactly — User, Action, Date
+ * (`app-source.txt` 1650). `"all"` is the sentinel for both selects, matching
+ * every other filter schema in the repo.
  *
- * Two fields are new in Phase 3b, and both were gaps rather than additions:
- * `search` the handler had always honoured while the schema never declared it,
- * and `from`/`to` neither side supported even though the prototype draws a Date
- * chip. `"all"` is the sentinel for both selects, matching every other filter
- * schema in the repo.
- *
- * `from`/`to` are plant-local calendar dates (`YYYY-MM-DD`), inclusive at both
- * ends — the handler converts each row's instant to the plant's day before
- * comparing, so a night shift's late entries land on the day it worked.
+ * `from`/`to` are new in Phase 3b — a gap rather than an addition, since the
+ * prototype draws a Date chip but neither side supported the range. They are
+ * plant-local calendar dates (`YYYY-MM-DD`), inclusive at both ends — the
+ * handler converts each row's instant to the plant's day before comparing, so
+ * a night shift's late entries land on the day it worked.
  */
 export const auditFiltersSchema = z.object({
   page: z.number().int().positive(),
   pageSize: z.number().int().positive(),
-  search: z.string(),
   username: z.string(),
   action: auditActionSchema.or(z.literal("all")),
   from: z.string(),
