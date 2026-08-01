@@ -1,8 +1,12 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { toast } from "sonner";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { NotificationsList } from "@/features/notifications/components/NotificationsList";
+import {
+  MarkAllReadButton,
+  NotificationsList,
+} from "@/features/notifications/components/NotificationsList";
 import { NotificationsTray } from "@/features/notifications/components/NotificationsTray";
 import { createTestQueryClient, renderWithProviders } from "@/test/utils";
 import {
@@ -12,6 +16,29 @@ import {
   paginatedEnvelope,
   resetMockApi,
 } from "@/test/mockApi";
+
+/*
+  Mocked at the module boundary, same as `AssistantChat.test.tsx` — asserted
+  here rather than by counting rendered toasts, because `renderWithProviders`
+  mounts no `<Toaster/>` to count.
+*/
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+/**
+ * `useNow` returns `null` until its post-mount effect fires and then the real
+ * clock — both wrong for a relative-time assertion. Fixed two hours after the
+ * fixture's `created_at` so `formatRelativeTime` has a deterministic "2h ago"
+ * to produce regardless of when this suite actually runs.
+ */
+const NOW = new Date("2026-07-31T12:45:00+00:00");
+vi.mock("@/hooks/useNow", () => ({
+  useNow: () => NOW,
+}));
 
 const notification = (overrides: Record<string, unknown> = {}) => ({
   id: "NTF-001",
@@ -26,17 +53,15 @@ const notification = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-let lastQuery: Record<string, unknown> = {};
 let readPosts: string[] = [];
 
 const stubList = (
   items: readonly unknown[] = [notification()],
   total?: number
 ) => {
-  mockRoute("GET", /\/notifications$/, (config) => {
-    lastQuery = (config.params ?? {}) as Record<string, unknown>;
-    return paginatedEnvelope(items, { total: total ?? items.length });
-  });
+  mockRoute("GET", /\/notifications$/, () =>
+    paginatedEnvelope(items, { total: total ?? items.length })
+  );
 };
 
 const stubMarkRead = () => {
@@ -51,9 +76,24 @@ const stubMarkRead = () => {
   );
 };
 
+let markAllReadCalls = 0;
+
+const stubMarkAllRead = (markedCount = 1) => {
+  mockRoute(
+    "POST",
+    /\/notifications\/read-all$/,
+    () => {
+      markAllReadCalls += 1;
+      return envelope({ markedCount });
+    },
+    200
+  );
+};
+
 beforeEach(() => {
-  lastQuery = {};
   readPosts = [];
+  markAllReadCalls = 0;
+  vi.clearAllMocks();
   installMockApi();
 });
 
@@ -69,8 +109,8 @@ describe("NotificationsList", () => {
 
     expect(await screen.findByText("Action assigned to you")).toBeVisible();
     expect(screen.getByText("Inspect valve XV-118 — due today")).toBeVisible();
-    // 10:45 UTC is 14:45 GST — plant time, not the runner's.
-    expect(screen.getByText("31 Jul, 14:45")).toBeVisible();
+    // NOW is fixed two hours after the fixture's created_at.
+    expect(screen.getByText("2h ago")).toBeVisible();
   });
 
   /** Click-through to the record the notification is about. */
@@ -168,40 +208,60 @@ describe("NotificationsList", () => {
   });
 
   /**
-   * The flag reaches the server rather than being applied in the browser —
-   * filtering ten rows client-side would look identical on the seeded plant and
-   * be wrong on a real one.
-   *
-   * Switching *back* asserts the control state, not a second request: `All` is
-   * the key that was already fetched, and a fresh cache entry is served without
-   * a refetch. That is correct, and asserting a request here would have been
-   * asserting a cache miss.
+   * The tab asks the server to filter, rather than fetching one page and
+   * slicing it client-side. An earlier version did the latter with a single
+   * `pageSize: MAX_PAGE_SIZE` fetch — cheap in requests, but wrong the moment
+   * a user had more than `MAX_PAGE_SIZE` notifications: the pagination
+   * footer's client-computed total and `NotificationsOverviewCard`'s
+   * server-reported total could disagree on screen. Server-side filtering
+   * costs a real second request on tab switch, and reports a total that is
+   * always correct at any scale.
    */
-  it("sends the unread filter to the server and tracks which tab is active", async () => {
-    stubList();
+  it("asks the server to filter to unread rather than filtering client-side", async () => {
+    let lastParams: Record<string, unknown> | undefined;
+    mockRoute("GET", /\/notifications$/, (config) => {
+      lastParams = (config.params ?? {}) as Record<string, unknown>;
+      const items =
+        lastParams.unread === true
+          ? [notification()]
+          : [
+              notification(),
+              notification({
+                id: "NTF-002",
+                title: "Shift summary ready",
+                body: "Already dealt with",
+                read: true,
+              }),
+            ];
+      return paginatedEnvelope(items, { total: items.length });
+    });
 
     renderWithProviders(<NotificationsList />);
     await screen.findByText("Action assigned to you");
-    expect(lastQuery.unread).toBeUndefined();
+    expect(screen.getByText("Shift summary ready")).toBeVisible();
 
     await userEvent.click(screen.getByRole("button", { name: "Unread" }));
-    await waitFor(() => expect(lastQuery.unread).toBe(true));
     expect(screen.getByRole("button", { name: "Unread" })).toHaveAttribute(
       "aria-pressed",
       "true"
     );
+    await waitFor(() => expect(lastParams?.unread).toBe(true));
+    expect(await screen.findByText("Action assigned to you")).toBeVisible();
+    expect(screen.queryByText("Shift summary ready")).not.toBeInTheDocument();
 
+    // Back to "All" — the query for these exact params was already fetched
+    // once above, so this may come from React Query's cache rather than a
+    // fresh round trip; the content is what matters, not another network call.
     await userEvent.click(screen.getByRole("button", { name: "All" }));
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "All" })).toHaveAttribute(
-        "aria-pressed",
-        "true"
-      )
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
     );
     expect(screen.getByRole("button", { name: "Unread" })).toHaveAttribute(
       "aria-pressed",
       "false"
     );
+    expect(await screen.findByText("Shift summary ready")).toBeVisible();
   });
 
   /**
@@ -230,36 +290,58 @@ describe("NotificationsList", () => {
     expect(await screen.findByText("No notifications yet")).toBeVisible();
 
     await userEvent.click(screen.getByRole("button", { name: "Unread" }));
-    expect(await screen.findByText("Nothing unread")).toBeVisible();
+    expect(await screen.findByText("No notifications")).toBeVisible();
   });
 
-  /**
-   * FR-NOT-01 is "in-app **and by email**". The email half is an SMTP relay
-   * (§3.3) — not a frontend capability — and the screen says so rather than
-   * implying both are working.
-   */
-  it("discloses that email delivery is not shown here", async () => {
-    stubList();
-
-    renderWithProviders(<NotificationsList />);
-
-    expect(await screen.findByText(/Email delivery is handled/)).toBeVisible();
-  });
-
-  /**
-   * The prototype has "Mark all read" (app-source 1849). There is no bulk
-   * endpoint, and looping N writes from the browser is a different operation —
-   * it can half-fail and writes N audit events for one act.
-   */
-  it("offers no bulk mark-all, which has no endpoint behind it", async () => {
+  /** The prototype's right-hand column (app-source.txt 1859–1871). */
+  it("shows the notification settings and overview sidebar cards", async () => {
     stubList();
 
     renderWithProviders(<NotificationsList />);
     await screen.findByText("Action assigned to you");
 
-    expect(
-      screen.queryByRole("button", { name: /mark all/i })
-    ).not.toBeInTheDocument();
+    expect(screen.getByText("Notification settings")).toBeVisible();
+    expect(screen.getByText("Action assigned to me")).toBeVisible();
+    expect(screen.getByText("Notifications overview")).toBeVisible();
+    expect(screen.getByText("Currently unread")).toBeVisible();
+  });
+});
+
+describe("MarkAllReadButton", () => {
+  /**
+   * A one-row `{ unreadOnly: true, pageSize: 1 }` question, the same shape
+   * `useNotificationTray` already asks for its badge — reading `total` off
+   * the envelope rather than sampling a fetched page, so this is right at
+   * any scale.
+   */
+  it("is disabled when nothing is unread", async () => {
+    stubList([], 0);
+
+    renderWithProviders(<MarkAllReadButton />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Mark all read" })
+      ).toBeDisabled()
+    );
+  });
+
+  /**
+   * The prototype's header "Mark all read" (app-source.txt 1849) — one
+   * `POST /notifications/read-all`, not one `POST /:id/read` per unread row.
+   */
+  it("marks every unread notification in a single request", async () => {
+    stubList([notification({ id: "NTF-001" })], 2);
+    stubMarkAllRead(2);
+
+    renderWithProviders(<MarkAllReadButton />);
+    const button = await screen.findByRole("button", { name: "Mark all read" });
+    await waitFor(() => expect(button).toBeEnabled());
+
+    await userEvent.click(button);
+
+    await waitFor(() => expect(markAllReadCalls).toBe(1));
+    expect(toast.success).toHaveBeenCalledWith("All notifications marked read");
   });
 });
 

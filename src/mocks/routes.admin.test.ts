@@ -1152,16 +1152,6 @@ describe("GET /audit", () => {
     ).toBe(true);
   });
 
-  it("searches action, target and the actor's display name", async () => {
-    const byAction = await get(auditGET, "/audit?search=RETENTION", "admin");
-    // The seed's actor-less row renders as "System"; the search has to find it
-    // by the same word the table shows.
-    const bySystem = await get(auditGET, "/audit?search=System", "admin");
-
-    expect((await byAction.json()).data.items).toHaveLength(1);
-    expect((await bySystem.json()).data.items).toHaveLength(1);
-  });
-
   /**
    * The date filter the prototype draws a chip for and neither the schema nor
    * the handler supported before Phase 3b. Bounds are **plant-local calendar
@@ -1185,7 +1175,7 @@ describe("GET /audit", () => {
       seedLateNightRow();
       const response = await get(
         auditGET,
-        "/audit?from=2026-07-30&to=2026-07-30&search=ACT-LATE",
+        "/audit?from=2026-07-30&to=2026-07-30",
         "admin"
       );
 
@@ -1194,14 +1184,13 @@ describe("GET /audit", () => {
 
     it("excludes a row outside the range", async () => {
       seedLateNightRow();
-      const before = await get(
-        auditGET,
-        "/audit?to=2026-07-29&search=ACT-LATE",
-        "admin"
-      );
+      const before = await get(auditGET, "/audit?to=2026-07-29", "admin");
+      // Bounded on both ends, unlike the "before" query above — an unbounded
+      // `from` would also catch whatever the base seed writes for "today",
+      // which is no help in proving this one row falls outside the window.
       const after = await get(
         auditGET,
-        "/audit?from=2026-07-31&search=ACT-LATE",
+        "/audit?from=2026-07-31&to=2026-07-31",
         "admin"
       );
 
@@ -1228,12 +1217,12 @@ describe("GET /audit", () => {
 
       const utcDay = await get(
         auditGET,
-        "/audit?from=2026-07-30&to=2026-07-30&search=ACT-CROSSING",
+        "/audit?from=2026-07-30&to=2026-07-30",
         "admin"
       );
       const plantDay = await get(
         auditGET,
-        "/audit?from=2026-07-31&to=2026-07-31&search=ACT-CROSSING",
+        "/audit?from=2026-07-31&to=2026-07-31",
         "admin"
       );
 

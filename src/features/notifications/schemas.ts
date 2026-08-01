@@ -118,6 +118,11 @@ export const notificationDetailResponseSchema = envelopeSchema(
   notificationWireSchema
 );
 
+/** `POST /notifications/read-all`'s response — how many rows the write touched. */
+export const notificationsMarkAllReadResponseSchema = envelopeSchema(
+  z.object({ markedCount: z.number().int().nonnegative() })
+);
+
 export const notificationFiltersSchema = z.object({
   page: z.number().int().positive(),
   pageSize: z.number().int().positive(),

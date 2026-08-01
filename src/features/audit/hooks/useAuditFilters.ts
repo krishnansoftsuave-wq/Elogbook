@@ -1,30 +1,41 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 
-import { DEFAULT_PAGE_SIZE } from "@/constants/api";
+import {
+  AUDIT_FILTERS_DEFAULTS,
+  auditFiltersToSearchParams,
+} from "@/features/audit/hooks/auditFilterParams";
 import type { AuditFilters } from "@/features/audit/types";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
 /**
- * List filters are local UI state — `useState`, then the query key, never
- * Zustand. Same shape as `useSummaryFilters` and `useUserFilters`.
+ * List filters are local UI state — `useState`, then the query key, same
+ * shape as `useSummaryFilters` and `useUserFilters` — **plus** a mirror into
+ * the URL, which those siblings don't have. That divergence is a deliberate,
+ * Audit-only product decision: a filtered audit view is something a reviewer
+ * shares or bookmarks, not just narrows and reads once. `AdminAuditPage`
+ * reads the inbound URL server-side (`searchParams`, not `useSearchParams`)
+ * to seed `initialFilters` — the same reason `auth/login/page.tsx` reads
+ * `returnTo` that way — so this hook never calls `useSearchParams()` and
+ * carries none of its Suspense-boundary requirement.
  *
  * `from` / `to` are plant-local calendar dates, empty meaning unbounded.
  */
-const INITIAL_FILTERS: AuditFilters = {
-  page: 1,
-  pageSize: DEFAULT_PAGE_SIZE,
-  search: "",
-  username: "all",
-  action: "all",
-  from: "",
-  to: "",
-};
+export const useAuditFilters = (initialFilters: AuditFilters) => {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [filters, setFilters] = useState<AuditFilters>(initialFilters);
 
-export const useAuditFilters = () => {
-  const [filters, setFilters] = useState<AuditFilters>(INITIAL_FILTERS);
-  const debouncedSearch = useDebouncedValue(filters.search);
+  // Replaced, not pushed — narrowing a filter should not fill the back
+  // button with one history entry per click. `router.back()` should leave
+  // the screen, not step back through chips one at a time.
+  useEffect(() => {
+    const query = auditFiltersToSearchParams(filters).toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, {
+      scroll: false,
+    });
+  }, [filters, pathname, router]);
 
   /**
    * Any change other than paging resets to page 1 — otherwise narrowing a
@@ -41,22 +52,13 @@ export const useAuditFilters = () => {
     []
   );
 
-  const reset = useCallback(() => setFilters(INITIAL_FILTERS), []);
-
-  // The debounced copy feeds the query key, so typing does not fire a request
-  // per keystroke. The dates and selects are not debounced: they commit a whole
-  // value at once rather than a character at a time.
-  const queryFilters = useMemo<AuditFilters>(
-    () => ({ ...filters, search: debouncedSearch }),
-    [filters, debouncedSearch]
-  );
+  const reset = useCallback(() => setFilters(AUDIT_FILTERS_DEFAULTS), []);
 
   const isFiltered =
-    filters.search !== "" ||
     filters.username !== "all" ||
     filters.action !== "all" ||
     filters.from !== "" ||
     filters.to !== "";
 
-  return { filters, queryFilters, setFilter, reset, isFiltered };
+  return { filters, queryFilters: filters, setFilter, reset, isFiltered };
 };
