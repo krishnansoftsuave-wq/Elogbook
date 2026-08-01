@@ -90,6 +90,18 @@ export const API_ENDPOINTS = {
     FEEDBACK: "/assistant/feedback",
   },
 
+  /**
+   * §7.7 — trends & KPIs. **FR-AN-02**'s trend dashboard.
+   *
+   * One endpoint, because the screen is one render pass over five sections
+   * (`app-source.txt` 1901–1982) and none of them can load without the others.
+   * `SUMMARY` rather than `LIST`: the response is a composite document, not a
+   * page of rows, so it carries no `total`/`page`.
+   */
+  TRENDS: {
+    SUMMARY: "/trends",
+  },
+
   /** §6.3 — Management risk decisions. No FR-ID of its own; see the schema. */
   DECISIONS: {
     LIST: "/decisions",

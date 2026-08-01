@@ -155,6 +155,76 @@ export const stack = (
   });
 };
 
+/**
+ * Row positions for a horizontal chart — `bands()` transposed. `rowHeight` is
+ * the full slot a category owns (bar plus the gap after it); `barHeight` is
+ * how tall the bar drawn in that slot actually is, centred in the slot rather
+ * than tied to its ratio, because a horizontal stacked bar's bar height is a
+ * legibility constant (`iHStack`'s `height:22`, app-source.txt 1892) rather
+ * than something that should shrink as more categories are added.
+ */
+export interface Row {
+  /** Top edge of this category's bar. */
+  y: number;
+  /** Vertical centre — where a label or total anchors its baseline. */
+  center: number;
+}
+
+export const rows = (
+  plot: Plot,
+  count: number,
+  rowHeight: number,
+  barHeight: number
+): Row[] => {
+  if (count <= 0) return [];
+
+  return Array.from({ length: count }, (_, index) => {
+    const center = plot.y + rowHeight * index + rowHeight / 2;
+    return { y: center - barHeight / 2, center };
+  });
+};
+
+/**
+ * One category's bucket values turned into left-to-right segment positions
+ * within a single row — `iHStack`'s geometry (app-source.txt 1892:
+ * `width:(v/tot*100)+'%'`), computed in user units instead of a CSS percentage
+ * so it can sit on an SVG `<rect>`.
+ *
+ * Proportional to the *row's own total*, not a shared axis maximum — every
+ * row fills exactly its `rowWidth`, which is what makes `iHStack` a 100%
+ * stacked bar rather than `StackedBarChart`'s "tallest total sets the scale"
+ * chart.
+ */
+export interface HorizontalSegment {
+  x: number;
+  width: number;
+  /** Share of the row's total, 0–1 — what the accessible table would report. */
+  fraction: number;
+}
+
+export const horizontalStack = (
+  rowX: number,
+  rowWidth: number,
+  values: readonly number[]
+): HorizontalSegment[] => {
+  const total = values.reduce(
+    (sum, value) => sum + (Number.isFinite(value) && value > 0 ? value : 0),
+    0
+  );
+  if (total <= 0) return values.map(() => ({ x: rowX, width: 0, fraction: 0 }));
+
+  let consumed = 0;
+
+  return values.map((value) => {
+    const safe = Number.isFinite(value) && value > 0 ? value : 0;
+    const fraction = safe / total;
+    const width = fraction * rowWidth;
+    const x = rowX + consumed;
+    consumed += width;
+    return { x, width, fraction };
+  });
+};
+
 /* -------------------------------------------------------------------------- */
 /* Pie / donut geometry                                                        */
 /* -------------------------------------------------------------------------- */

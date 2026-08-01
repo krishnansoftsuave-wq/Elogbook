@@ -6,7 +6,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ChartFrame } from "@/components/charts/ChartFrame";
 import { ChartKindToggle } from "@/components/charts/ChartKindToggle";
+import { HorizontalStackedBarChart } from "@/components/charts/HorizontalStackedBarChart";
+import { KpiTrendCard } from "@/components/charts/KpiTrendCard";
 import { PieChart } from "@/components/charts/PieChart";
+import { Sparkline } from "@/components/charts/Sparkline";
 import { StackedBarChart } from "@/components/charts/StackedBarChart";
 
 /**
@@ -117,6 +120,33 @@ describe("ChartFrame", () => {
     expect(svg).not.toHaveAttribute("height");
   });
 
+  /**
+   * `sr-only`'s `width:1px` does not constrain a `<table>` under the default
+   * `table-layout:auto` once `white-space:nowrap` forbids wrapping — the table
+   * renders at its full unwrapped content width regardless, which is invisible
+   * but (being `position:absolute`) still enlarges the page's own scrollable
+   * area once a wide-enough crosstab pushes it past the viewport. `table-fixed`
+   * makes the table honour the 1px width for real. jsdom does not lay out CSS,
+   * so this only pins the class staying present — the 375px regression itself
+   * is `e2e/trends.spec.ts`'s job.
+   */
+  it("constrains the accessible table's layout so a wide crosstab cannot expand the page", () => {
+    render(
+      <ChartFrame
+        label="Chart"
+        width={10}
+        height={10}
+        series={[{ name: "A", data: [{ label: "x", value: 1 }] }]}
+      >
+        <rect x={0} y={0} width={1} height={1} />
+      </ChartFrame>
+    );
+
+    expect(screen.getByRole("table", { name: "Chart" })).toHaveClass(
+      "table-fixed"
+    );
+  });
+
   it("renders a dash where a series has no value for a category", () => {
     render(
       <ChartFrame
@@ -212,7 +242,7 @@ describe("StackedBarChart", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders one rect per non-zero segment", () => {
+  it("renders one segment per non-zero bucket", () => {
     const { container } = render(
       <StackedBarChart
         label="Chart"
@@ -221,7 +251,32 @@ describe("StackedBarChart", () => {
       />
     );
 
-    expect(container.querySelectorAll("rect")).toHaveLength(1);
+    expect(container.querySelectorAll("[title]")).toHaveLength(1);
+    expect(container.querySelector("[title]")).toHaveAttribute(
+      "title",
+      "Overdue: 2"
+    );
+  });
+
+  /**
+   * The structural fix this chart exists in its current form for: an
+   * `<svg viewBox>` with `w-full` scales its contents by
+   * `container_width / viewBox_width`, so a 12px label was 12 *user units* and
+   * rendered at a different size in every container. Boxes have no such layer.
+   */
+  it("draws with no scaling layer, so declared sizes are real pixels", () => {
+    const { container } = render(
+      <StackedBarChart
+        label="Chart"
+        buckets={BUCKETS}
+        categories={CATEGORIES}
+      />
+    );
+
+    expect(container.querySelector("svg")).toBeNull();
+    expect(
+      container.querySelector("[data-slot='chart-columns']")
+    ).not.toBeNull();
   });
 
   /**
@@ -270,12 +325,427 @@ describe("StackedBarChart", () => {
       />
     );
 
-    for (const element of container.querySelectorAll("rect, text")) {
-      for (const attribute of ["x", "y", "width", "height"]) {
-        const value = element.getAttribute(attribute);
-        if (value !== null) expect(value).not.toContain("NaN");
-      }
+    for (const element of container.querySelectorAll("*")) {
+      expect(element.className.toString()).not.toContain("NaN");
     }
+    // No value means no segment to draw — an empty track, not a zero-width one.
+    expect(container.querySelectorAll("[title]")).toHaveLength(0);
+  });
+
+  /** `iBar`'s own call passes `unit:'items'` (app-source.txt 1946); default stays bare. */
+  it("appends the unit to the printed total when given one", () => {
+    render(
+      <StackedBarChart
+        label="Chart"
+        buckets={[{ name: "Out of service", tone: "chart-1" }]}
+        categories={[{ label: "Train 2", values: [3] }]}
+        unit="items"
+      />
+    );
+
+    expect(screen.getByText("3 items")).toBeInTheDocument();
+  });
+
+  it("prints a bare total when no unit is given", () => {
+    const { container } = render(
+      <StackedBarChart
+        label="Chart"
+        buckets={[{ name: "Out of service", tone: "chart-1" }]}
+        categories={[{ label: "Train 2", values: [3] }]}
+      />
+    );
+
+    // Scoped to the drawn column, not the accessible table's own "3" cell.
+    const columns = container.querySelector("[data-slot='chart-columns']");
+    expect(columns?.querySelector("span")?.textContent).toBe("3");
+    expect(screen.queryByText("3 items")).not.toBeInTheDocument();
+  });
+
+  /**
+   * The `<ul>` legend is what `showLegend` controls — the accessible table's
+   * own column header still names the bucket regardless, since that table
+   * must carry full information independent of what the sighted legend
+   * shows.
+   */
+  it("hides the legend when showLegend is false", () => {
+    const { container } = render(
+      <StackedBarChart
+        label="Chart"
+        buckets={[{ name: "Out of service", tone: "chart-1" }]}
+        categories={CATEGORIES}
+        showLegend={false}
+      />
+    );
+
+    expect(container.querySelector("ul")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Out of service" })
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * A per-area "by area" chart wants one colour per category, not one shared
+   * bucket colour — `EquipmentOutOfServiceCard`'s only caller with more than
+   * one category and a single bucket.
+   */
+  it("lets a category's own tone override the bucket's", () => {
+    const { container } = render(
+      <StackedBarChart
+        label="Chart"
+        buckets={[{ name: "Out of service", tone: "chart-1" }]}
+        categories={[
+          { label: "Train 2", values: [3], tone: "chart-6" },
+          { label: "Train 3", values: [1], tone: "chart-7" },
+        ]}
+      />
+    );
+
+    const segments = container.querySelectorAll("[title]");
+    expect(segments[0]).toHaveClass("bg-chart-6");
+    expect(segments[1]).toHaveClass("bg-chart-7");
+  });
+
+  /**
+   * `iBar` scales columns against `max * 1.12` so the tallest never touches
+   * the value label above it (`niceMax`), and a shorter column must be
+   * visibly shorter — the whole point of a bar chart.
+   */
+  it("gives a larger value a taller column", () => {
+    const { container } = render(
+      <StackedBarChart
+        label="Chart"
+        buckets={[{ name: "Out of service", tone: "chart-1" }]}
+        categories={[
+          { label: "Big", values: [10] },
+          { label: "Small", values: [2] },
+        ]}
+      />
+    );
+
+    const bars = [...container.querySelectorAll("[title]")].map(
+      (segment) => segment.parentElement
+    );
+    // `basis-[89%]` vs `basis-[18%]` — 10/11.2 and 2/11.2 of the plot.
+    expect(bars[0]?.className).toContain("basis-[89%]");
+    expect(bars[1]?.className).toContain("basis-[18%]");
+  });
+});
+
+describe("Sparkline", () => {
+  const VALUES = [42, 43, 45, 44, 46, 43, 44];
+
+  it("labels the chart and tabulates every point", () => {
+    render(
+      <Sparkline label="ADP daily trend" values={VALUES} tone="chart-1" />
+    );
+
+    expect(
+      screen.getByRole("img", { name: "ADP daily trend" })
+    ).toBeInTheDocument();
+    // 42 is the series' first (and only) value of 42, unlike 44 which repeats.
+    expect(screen.getByRole("cell", { name: "42" })).toBeInTheDocument();
+  });
+
+  it("draws one bar per value", () => {
+    const { container } = render(
+      <Sparkline label="Chart" values={VALUES} tone="chart-1" />
+    );
+    expect(container.querySelectorAll("rect")).toHaveLength(VALUES.length);
+  });
+
+  /**
+   * The prototype's own geometry (`Math.max(3,...)`, app-source.txt 381): a
+   * zero value still draws a visible sliver rather than nothing, so "no data"
+   * and "value is zero" do not look identical.
+   */
+  it("gives a zero value a visible sliver rather than no bar at all", () => {
+    const { container } = render(
+      <Sparkline label="Chart" values={[0, 0, 0]} tone="chart-1" />
+    );
+
+    const heights = [...container.querySelectorAll("rect")].map((rect) =>
+      Number(rect.getAttribute("height"))
+    );
+    expect(heights.every((height) => height >= 3)).toBe(true);
+  });
+
+  it("dims every bar but the most recent", () => {
+    const { container } = render(
+      <Sparkline label="Chart" values={[1, 2, 3]} tone="chart-1" />
+    );
+
+    const rects = [...container.querySelectorAll("rect")];
+    expect(
+      rects.slice(0, -1).every((rect) => rect.classList.contains("opacity-40"))
+    ).toBe(true);
+    expect(rects.at(-1)).not.toHaveClass("opacity-40");
+  });
+});
+
+describe("KpiTrendCard", () => {
+  const ADP = {
+    code: "ADP",
+    fullLabel: "Agreed Daily Prod.",
+    unit: "MM",
+    values: [42, 43, 45, 44, 46, 43, 44],
+    tone: "chart-1" as const,
+  };
+
+  /**
+   * `getByText` alone is ambiguous here: the embedded `Sparkline`'s hidden
+   * accessible table repeats several of these same numbers as table cells.
+   * Scoping to the visible headline element is what makes the assertion
+   * about the *card's* number rather than any number on the page.
+   */
+  it("shows the code, latest value and unit", () => {
+    const { container } = render(<KpiTrendCard {...ADP} />);
+
+    expect(screen.getByText("ADP")).toBeInTheDocument();
+    expect(container.querySelector(".text-2xl")?.textContent).toBe("44");
+    expect(screen.getByText("MM")).toBeInTheDocument();
+  });
+
+  it("labels an increase in text, not colour alone", () => {
+    // 43 -> 44, the series' last two points, is +1.
+    render(<KpiTrendCard {...ADP} />);
+    expect(screen.getByText("+1 MM vs prev")).toBeInTheDocument();
+  });
+
+  it("labels a decrease with a minus sign, not colour alone", () => {
+    render(<KpiTrendCard {...ADP} values={[0, 0, 1.2, 0, 0, 0.6, 0]} />);
+    expect(screen.getByText("-0.6 MM vs prev")).toBeInTheDocument();
+  });
+
+  it("says 'no change' rather than printing a bare 0", () => {
+    render(<KpiTrendCard {...ADP} values={[5, 5]} />);
+    expect(screen.getByText("no change vs prev")).toBeInTheDocument();
+    expect(screen.queryByText("+0 MM vs prev")).not.toBeInTheDocument();
+  });
+
+  it("shows no delta when there is only one point to show", () => {
+    render(<KpiTrendCard {...ADP} values={[44]} />);
+    expect(screen.queryByText(/vs prev/)).not.toBeInTheDocument();
+  });
+
+  it("reports avg, min and max across the whole series", () => {
+    const { container } = render(<KpiTrendCard {...ADP} />);
+    // Scoped for the same reason as the headline assertion above.
+    const footer = container.querySelector("div.border-t");
+
+    expect(footer?.textContent).toContain("avg 43.9");
+    expect(footer?.textContent).toContain("min 42");
+    expect(footer?.textContent).toContain("max 46");
+  });
+
+  it("embeds an accessible sparkline of the same series", () => {
+    render(<KpiTrendCard {...ADP} />);
+    expect(
+      screen.getByRole("img", { name: "Agreed Daily Prod. — daily values" })
+    ).toBeInTheDocument();
+  });
+});
+
+describe("HorizontalStackedBarChart", () => {
+  const BUCKETS = [
+    { name: "Overdue", tone: "chart-5" },
+    { name: "Due soon", tone: "chart-3" },
+  ] as const;
+
+  const CATEGORIES = [
+    { label: "Active Force", values: [2, 3] },
+    { label: "SMITH Lock", values: [0, 1] },
+  ];
+
+  it("tabulates as a crosstab — a row per category, a column per bucket", () => {
+    render(
+      <HorizontalStackedBarChart
+        label="Compliance items by category"
+        buckets={BUCKETS}
+        categories={CATEGORIES}
+      />
+    );
+
+    expect(
+      screen.getByRole("img", { name: "Compliance items by category" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Overdue" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("rowheader", { name: "Active Force" })
+    ).toBeInTheDocument();
+  });
+
+  it("prints the row total with the configured suffix", () => {
+    render(
+      <HorizontalStackedBarChart
+        label="Chart"
+        buckets={BUCKETS}
+        categories={CATEGORIES}
+        totalSuffix="open"
+      />
+    );
+
+    // The bold total and its suffix share one `<span>`; `getByText` matches
+    // the inner span whose own content is exactly "5", so the suffix is
+    // checked on its parent rather than with a query that would also match
+    // every ancestor's aggregated text.
+    const total = screen.getByText("5");
+    expect(total).toBeInTheDocument();
+    expect(total.parentElement?.textContent).toContain("open");
+  });
+
+  /**
+   * Every row fills 100% of its own total — unlike `StackedBarChart`, whose
+   * column height is proportional to a shared axis maximum.
+   */
+  it("fills every row's track regardless of its total", () => {
+    const { container } = render(
+      <HorizontalStackedBarChart
+        label="Chart"
+        buckets={BUCKETS}
+        categories={[
+          { label: "Small", values: [1, 0] },
+          { label: "Big", values: [50, 0] },
+        ]}
+      />
+    );
+
+    // Scoped to the rows, not the whole chart: the legend swatch above it
+    // carries the same tone class.
+    const rows = container.querySelector("[data-slot='chart-rows']");
+    const filled = [...(rows?.querySelectorAll(".bg-chart-5") ?? [])];
+    expect(filled).toHaveLength(2);
+    // Both rows are 100% one bucket, so both segments span the whole track —
+    // this chart scales to each row's own total, not a shared maximum.
+    for (const segment of filled) {
+      expect(segment.className).toContain("basis-[100%]");
+    }
+  });
+
+  /**
+   * The structural fix: this was an `<svg viewBox="0 0 640 h">` with `w-full`,
+   * which scales every dimension inside it — including type — by
+   * `container_width / 640`. The prototype (`app-source.txt` 1888–1895) uses
+   * `div`s with percentage widths, and so does this now.
+   */
+  it("draws with no scaling layer, so declared sizes are real pixels", () => {
+    const { container } = render(
+      <HorizontalStackedBarChart
+        label="Chart"
+        buckets={BUCKETS}
+        categories={CATEGORIES}
+      />
+    );
+
+    expect(container.querySelector("svg")).toBeNull();
+    expect(container.querySelector("[data-slot='chart-rows']")).not.toBeNull();
+  });
+
+  /**
+   * Rounding each share independently lets five buckets total 98% or 102%,
+   * which in a 100%-stacked bar shows as the last segment overflowing the
+   * rounded track or leaving a sliver of empty track behind it.
+   */
+  it("apportions segments that total exactly 100% of the track", () => {
+    const { container } = render(
+      <HorizontalStackedBarChart
+        label="Chart"
+        buckets={[
+          { name: "A", tone: "chart-5" },
+          { name: "B", tone: "chart-3" },
+          { name: "C", tone: "chart-4" },
+        ]}
+        // Thirds — 33.33% each, which naive rounding turns into 99%.
+        categories={[{ label: "Even", values: [1, 1, 1] }]}
+      />
+    );
+
+    const percentages = [...container.querySelectorAll("[title]")].map(
+      (segment) => Number(/basis-\[(\d+)%\]/.exec(segment.className)?.[1] ?? 0)
+    );
+    expect(percentages).toHaveLength(3);
+    expect(percentages.reduce((sum, value) => sum + value, 0)).toBe(100);
+  });
+
+  it("carries each segment's exact count as a native tooltip", () => {
+    const { container } = render(
+      <HorizontalStackedBarChart
+        label="Chart"
+        buckets={BUCKETS}
+        categories={CATEGORIES}
+      />
+    );
+
+    // A `title` *attribute* now, not an SVG `<title>` child — same native
+    // tooltip, on an HTML element.
+    const titles = [...container.querySelectorAll("[title]")].map((segment) =>
+      segment.getAttribute("title")
+    );
+    expect(titles).toContain("Overdue: 2");
+    expect(titles).toContain("Due soon: 3");
+  });
+
+  /**
+   * `iHStack`'s own geometry prints the count inside the segment, but only
+   * when it clears zero (`v>=1?v:''`, app-source.txt 1892) — a segment for a
+   * zero count does not draw at all (`horizontalStack` gives it width 0), so
+   * there is nothing to label.
+   */
+  /**
+   * `getByText` alone is ambiguous here: the same count also appears as a
+   * cell in `ChartFrame`'s hidden accessible table, so both matches are
+   * gathered and the in-segment one (an SVG `<text>` carrying `fill-on-brand`)
+   * is picked out from among them.
+   */
+  it("prints each segment's count inside the fill, using the on-brand token", () => {
+    const { container } = render(
+      <HorizontalStackedBarChart
+        label="Chart"
+        buckets={BUCKETS}
+        categories={CATEGORIES}
+      />
+    );
+
+    const counts = [...container.querySelectorAll(".text-on-brand")].map(
+      (node) => node.textContent
+    );
+    expect(counts).toContain("2");
+    expect(counts).toContain("3");
+  });
+
+  it("omits the in-segment label for a zero-width segment", () => {
+    const { container } = render(
+      <HorizontalStackedBarChart
+        label="Chart"
+        buckets={BUCKETS}
+        categories={[{ label: "SMITH Lock", values: [0, 1] }]}
+      />
+    );
+
+    // Only the non-zero bucket's count renders inside a segment — the
+    // zero-value one never draws a segment to label at all.
+    const inSegmentLabels = [
+      ...container.querySelectorAll(".text-on-brand"),
+    ].map((node) => node.textContent);
+    expect(inSegmentLabels).toEqual(["1"]);
+  });
+
+  it("still renders a track for an all-zero category, without NaN geometry", () => {
+    const { container } = render(
+      <HorizontalStackedBarChart
+        label="Chart"
+        buckets={BUCKETS}
+        categories={[{ label: "Quiet", values: [0, 0] }]}
+      />
+    );
+
+    for (const element of container.querySelectorAll("*")) {
+      expect(element.className.toString()).not.toContain("NaN");
+    }
+    // The empty track still renders, so a zero row reads as a row.
+    expect(container.querySelector(".bg-muted")).not.toBeNull();
+    expect(container.querySelectorAll("[title]")).toHaveLength(0);
   });
 });
 

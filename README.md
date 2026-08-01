@@ -218,6 +218,7 @@ before the backend exists. When it lands, only the base URL changes.
 | `/notifications` | `GET` | authenticated | FR-NOT-01 |
 | `/notifications/:id/read` | `POST` | authenticated | FR-NOT-01, NFR-12 |
 | `/assistant/query` | `POST` | `assistant:query` | FR-AI-01/03/05/06 |
+| `/trends` | `GET` | `report:read` | §7.7, FR-AN-02 |
 | `/decisions` | `GET` `POST` | `analytics:read` | §6.3 — *no FR-ID exists* |
 | `/decisions/:id` `…/status` `…/comments` | `GET` `PATCH` `POST` | `analytics:read` (+ workflow) | §6.3(a)/(b) |
 | `/requests*` | — | wildcard / own | ⚠️ **no BRD basis** — see below |
@@ -381,6 +382,7 @@ sidebar filter, the root redirect and the edge proxy all read it:
 | `/actions/**` | `shift:read` + `action:read` |
 | `/summaries/**` | `shift:read` + `summary:read` |
 | `/assistant/**` | `shift:read` + `assistant:query` |
+| `/trends/**` | `shift:read` + `report:read` |
 | everything else | nothing |
 
 Two rules that table encodes, both learned from bugs:

@@ -18,6 +18,10 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-chart-9: var(--chart-9);
+  --color-chart-8: var(--chart-8);
+  --color-chart-7: var(--chart-7);
+  --color-chart-6: var(--chart-6);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -61,6 +65,18 @@
      three different arbitrary sub-xs sizes is how a scale stops being one. */
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1.1;
+  /* 10px — the count printed *inside* a stacked-bar segment, and the column
+     labels under a bar chart (`iHStack` 1892, `iBar` 466). Added for the same
+     reason `2xs` was: these are real, recurring chart sizes, and the
+     alternative is an arbitrary `text-[10px]` at each call site. The ramp
+     stops here; anything smaller is not legible at AA. */
+  --text-3xs: 0.625rem;
+  --text-3xs--line-height: 1.1;
+
+  /* 5px — a stacked bar's track. Half `--radius`, continuing the ramp below
+     rather than an arbitrary `rounded-[5px]`. Deliberately not named `xs`, so
+     Tailwind's own 2px `rounded-xs` (the legend swatches) stays available. */
+  --radius-bar: calc(var(--radius) * 0.5);
 
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
@@ -173,6 +189,27 @@
   --chart-3: oklch(0.6658 0.1574 58.32); /* #D97706  PRICOL.High */
   --chart-4: oklch(0.5234 0.1347 144.17); /* #2E7D32  PRICOL.Low */
   --chart-5: oklch(0.5433 0.174 29.7); /* #C0392B  PRICOL.Critical */
+  /* Extends the ramp to 5 distinct series for the Trends & KPIs strip
+     (`sparkCard`, app-source.txt 1909–1914): ADP/AVG/Flare already land on
+     chart-1/4/3 above, but Spot Rate (#2F73B5) and Line Pressure (#7A3FA0)
+     have no equivalent hue in chart-1..5 — every one of those five is teal,
+     amber or green. Reusing one would put two KPI cards in the same colour
+     side by side, so `components/charts/tones.ts` genuinely needed two more. */
+  --chart-6: oklch(0.5447 0.1238 250.64); /* #2F73B5  Spot Rate blue */
+  --chart-7: oklch(0.4861 0.1564 309.87); /* #7A3FA0  Line Pressure purple */
+  /* Extends the ramp again for the compliance chart's RAG buckets (`RAG()`,
+     app-source.txt 546): "Due ≤ 30 days" is its own gold/yellow, distinct
+     from "Due ≤ 7 days"'s amber (chart-3), and "No date" is a neutral grey —
+     neither existed above, so both buckets had been mapped onto chart-6/-7
+     (blue/purple), scrambling the legend against the prototype's actual RAG
+     colours. `chart-9` reuses `--muted-foreground`'s own light-mode value
+     (C.mut, #5E726E) rather than the RAG hex (#9BADA9) directly: that hex is
+     C.mut2, the prototype's *dark-surface* grey, and using it here too would
+     under-contrast a filled bar against this theme's white card. */
+  --chart-8: oklch(0.7788 0.1591 88.85); /* #E0B000  RAG "Due ≤ 30 days" gold */
+  --chart-9: oklch(
+    0.5345 0.0245 181.88
+  ); /* #5E726E  C.mut, RAG "No date" grey */
 
   --radius: 0.625rem;
 
@@ -268,6 +305,15 @@
   --chart-3: oklch(0.7686 0.1447 62.32); /* amber, lifted for dark */
   --chart-4: oklch(0.7227 0.1503 147.03); /* green, lifted for dark */
   --chart-5: oklch(0.7306 0.1374 25.81); /* #F2837A */
+  --chart-6: oklch(0.7 0.115 250.64); /* blue, lifted for dark */
+  --chart-7: oklch(0.68 0.145 309.87); /* purple, lifted for dark */
+  /* chart-8 is already light (L 0.78) and needs no lift to read on a dark
+     card — a further lift would wash it toward white. chart-9 swaps to
+     `--muted-foreground`'s own dark-mode value (C.mut2, #9BADA9) for the
+     same reason the light value swapped to C.mut: contrast against the
+     surface it actually sits on. */
+  --chart-8: oklch(0.82 0.145 88.85); /* gold, marginally lifted for dark */
+  --chart-9: oklch(0.7324 0.0209 180.88); /* #9BADA9  C.mut2 */
 
   --sidebar: oklch(0.2456 0.0216 170.26); /* #16241F */
   --sidebar-foreground: oklch(0.9571 0.0055 183.03); /* #EDF2F1 */

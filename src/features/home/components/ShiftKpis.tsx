@@ -2,8 +2,8 @@
 
 import { CircleCheck, Clock, ListChecks, TriangleAlert } from "lucide-react";
 
+import { StatTile } from "@/components/StatTile";
 import { useActionStatusCounts } from "@/features/actions/api/queries";
-import { StatTile } from "@/features/home/components/StatTile";
 
 /** Marks a tile whose number is a floor rather than a total. */
 const CAPPED_HINT = "Partial count";

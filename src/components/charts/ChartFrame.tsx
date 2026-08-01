@@ -88,6 +88,67 @@ const cellFor = (series: ChartSeries, category: string): string => {
   return datum.display ?? String(datum.value);
 };
 
+/**
+ * The accessible equivalent, on its own so a chart that is **not** an `<svg>`
+ * can render the identical markup.
+ *
+ * `HorizontalStackedBarChart` and `StackedBarChart` are HTML/flexbox rather
+ * than SVG — a `viewBox` scales its contents, so their typography grew and
+ * shrank with the container — but the fallback they owe a screen-reader user
+ * is exactly the same table, so it lives here rather than being reimplemented
+ * (and drifting) in each. `ChartFrame` below renders this unchanged.
+ */
+export const ChartDataTable = ({
+  label,
+  series,
+  categoryHeader = "Category",
+}: Pick<ChartFrameProps, "label" | "series" | "categoryHeader">) => {
+  const categories = categoriesOf(series);
+
+  return (
+    /*
+      `sr-only` rather than `hidden`: a hidden element is removed from the
+      accessibility tree, which would defeat the entire point of building it.
+
+      `table-fixed` alongside it: `sr-only`'s `position:absolute; width:1px`
+      does not actually constrain a `<table>`. `table-layout:auto` (the
+      default) treats an explicit width as a minimum, not a cap, once
+      `white-space:nowrap` (also part of `sr-only`) forbids wrapping any
+      cell — so the table renders at its full unwrapped content width
+      regardless. That box is out of normal flow (fine for sibling layout)
+      but still enlarges the page's own scrollable area once it extends
+      past the viewport (`position:absolute` does not exempt it). A
+      five-plus-column crosstab (`HorizontalStackedBarChart`'s table) was
+      wide enough to trip this at 375px — `table-fixed` makes the table
+      honour the 1px width for real, so the (invisible, already
+      `overflow:hidden`) excess is clipped instead of expanding the page.
+    */
+    <table className="sr-only table-fixed">
+      <caption>{label}</caption>
+      <thead>
+        <tr>
+          <th scope="col">{categoryHeader}</th>
+          {series.map((entry) => (
+            <th key={entry.name} scope="col">
+              {entry.name}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {categories.map((category) => (
+          <tr key={category}>
+            <th scope="row">{category}</th>
+            {series.map((entry) => (
+              <td key={entry.name}>{cellFor(entry, category)}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+};
+
 export const ChartFrame = ({
   label,
   width,
@@ -97,8 +158,6 @@ export const ChartFrame = ({
   children,
   className,
 }: ChartFrameProps) => {
-  const categories = categoriesOf(series);
-
   return (
     // A plain `div`, not a `figure`. A `figure` without a `figcaption` is an
     // unnamed group in the accessibility tree, so a screen reader announced
@@ -117,34 +176,11 @@ export const ChartFrame = ({
         {children}
       </svg>
 
-      {/*
-        The accessible equivalent. `sr-only` rather than `hidden`: a hidden
-        element is removed from the accessibility tree, which would defeat the
-        entire point of building it.
-      */}
-      <table className="sr-only">
-        <caption>{label}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{categoryHeader}</th>
-            {series.map((entry) => (
-              <th key={entry.name} scope="col">
-                {entry.name}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {categories.map((category) => (
-            <tr key={category}>
-              <th scope="row">{category}</th>
-              {series.map((entry) => (
-                <td key={entry.name}>{cellFor(entry, category)}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <ChartDataTable
+        label={label}
+        series={series}
+        categoryHeader={categoryHeader}
+      />
     </div>
   );
 };
