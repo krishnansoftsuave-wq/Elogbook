@@ -27,6 +27,20 @@ import { cn } from "@/lib/utils";
  * `sparkCard`'s own arithmetic (`latest=vals[vals.length-1]`, …) — a response
  * that shipped both the series and its own summary could disagree with
  * itself.
+ *
+ * **`lowerIsBetter` is a deliberate deviation from the prototype, not a
+ * transcription gap.** `sparkCard` colours every increase green and every
+ * decrease red, unconditionally (`up?'#2E7D32':'#C0392B'`, app-source.txt
+ * 1884) — faithfully ported here as the `false` default. For Flare (flaring
+ * rate), that is backwards: a *reduction* in flaring is the good outcome in an
+ * LNG control room, and rendering it destructive-red tells the reader the
+ * opposite of the truth. `ProductionKpiSection.tsx` passes `true` for Flare
+ * and leaves every other metric at the prototype's default — see its own
+ * comment for the metric-by-metric call. This mirrors how `route.ts`
+ * documents the period selector's data-slicing as an improvement over the
+ * prototype rather than a silent fix: named here so the next person diffing
+ * against `app-source.txt` reads it as an intentional change, not a
+ * transcription error.
  */
 
 export interface KpiTrendCardProps {
@@ -38,6 +52,13 @@ export interface KpiTrendCardProps {
   /** Oldest → newest. */
   values: readonly number[];
   tone: ChartTone;
+  /**
+   * Flips the delta's tone: a decrease renders `--success` and an increase
+   * renders `--destructive`. Default `false` matches the prototype's
+   * unconditional "up is green" — see the file docblock for why Flare passes
+   * `true`.
+   */
+  lowerIsBetter?: boolean;
   className?: string;
 }
 
@@ -49,6 +70,7 @@ export const KpiTrendCard = ({
   unit,
   values,
   tone,
+  lowerIsBetter = false,
   className,
 }: KpiTrendCardProps) => {
   const hasSeries = values.length > 0;
@@ -65,10 +87,12 @@ export const KpiTrendCard = ({
 
   const DeltaIcon =
     delta === null || delta === 0 ? Minus : delta > 0 ? ArrowUp : ArrowDown;
+  const isImprovement =
+    delta !== null && delta !== 0 && delta > 0 !== lowerIsBetter;
   const deltaTone =
     delta === null || delta === 0
       ? "text-muted-foreground"
-      : delta > 0
+      : isImprovement
         ? "text-success"
         : "text-destructive";
   const deltaText =

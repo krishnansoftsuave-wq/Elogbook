@@ -187,6 +187,17 @@ describe("trends summary schema", () => {
     expect(() => trendsSummaryWireSchema.parse(extended)).not.toThrow();
   });
 
+  /**
+   * `period` was a bare `z.string()` — a stale echo like `"90d"` parsed clean,
+   * which also meant `PERIOD_LABEL[summary.period]` (`TrendsScreen.tsx`)
+   * could not type-check against it. Pinned to the enum so a value outside
+   * `TREND_PERIODS` fails to parse rather than reaching the render.
+   */
+  it("rejects a period the pills do not offer", () => {
+    const stale = { ...WIRE, period: "90d" };
+    expect(() => trendsSummaryWireSchema.parse(stale)).toThrow();
+  });
+
   it("requires the §3 envelope", () => {
     const parsed = trendsSummaryResponseSchema.parse({
       success: true,

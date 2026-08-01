@@ -170,7 +170,7 @@ export const EquipmentOutOfServiceCard = ({
             tabIndex={0}
             className="overflow-x-auto rounded-lg border border-border focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
-            <table className="w-full text-left text-sm">
+            <table className="w-full text-start text-sm">
               <caption className="sr-only">
                 Equipment currently out of service, with tag, area, out-since
                 date and expected return

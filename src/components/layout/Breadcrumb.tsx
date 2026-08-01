@@ -15,6 +15,11 @@ import { cn } from "@/lib/utils";
  * A part is a link only when it carries an `href` **and** is not the last
  * one — the prototype's own rule (`cursor:p[1]?'pointer':'default'`), since
  * the current page never needs to link to itself.
+ *
+ * The chevron mirrors with `dir` (`rtl:-scale-x-100`) the same way
+ * `Header.tsx`'s sign-out arrow and `Sidebar.tsx`'s panel-toggle icons do: it
+ * points into the next crumb, a one-directional glyph, not a symmetric one
+ * (NFR-07).
  */
 export interface BreadcrumbItem {
   label: string;
@@ -44,7 +49,7 @@ export const Breadcrumb = ({ items, className }: BreadcrumbProps) => (
       return (
         <span key={item.label} className="flex items-center gap-1.5">
           <ChevronRight
-            className="size-3.5 text-muted-foreground"
+            className="size-3.5 text-muted-foreground rtl:-scale-x-100"
             aria-hidden
           />
           {item.href && !isLast ? (

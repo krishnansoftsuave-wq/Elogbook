@@ -138,7 +138,7 @@ export const HorizontalStackedBarChart = ({
               key={category.label}
               className="flex items-center gap-2 sm:gap-3"
             >
-              <span className="w-20 flex-none text-right text-xs font-semibold text-foreground sm:w-26">
+              <span className="w-20 flex-none text-end text-xs font-semibold text-foreground sm:w-26">
                 {category.label}
               </span>
 
@@ -170,7 +170,7 @@ export const HorizontalStackedBarChart = ({
                 })}
               </div>
 
-              <span className="w-14 flex-none text-right text-xs text-muted-foreground sm:w-16">
+              <span className="w-14 flex-none text-end text-xs text-muted-foreground sm:w-16">
                 <span className="font-semibold text-foreground">{total}</span>{" "}
                 {totalSuffix}
               </span>

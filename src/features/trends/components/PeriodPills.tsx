@@ -18,7 +18,15 @@ import { cn } from "@/lib/utils";
  * onClick>`, unreachable by keyboard and not a control at all.
  */
 
-const PERIOD_LABEL: Record<TrendPeriod, string> = {
+/**
+ * Exported so `TrendsScreen`'s "Production KPIs — N-Day Trend" heading can
+ * name the period actually selected, rather than the prototype's hardcoded
+ * "7-Day" (`prodSection`, app-source.txt 1918) staying on screen after a
+ * click changes the underlying data (`route.ts`'s own docblock names that gap
+ * as a deliberate improvement over the prototype for the *data*; the heading
+ * has to follow it or the improvement is invisible).
+ */
+export const PERIOD_LABEL: Record<TrendPeriod, string> = {
   "7d": "7 days",
   "14d": "14 days",
   "30d": "30 days",

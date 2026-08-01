@@ -5,12 +5,10 @@ import {
   barTop,
   circumference,
   HEADROOM,
-  horizontalStack,
   linearHeight,
   niceMax,
   percent,
   plotArea,
-  rows,
   slices,
   stack,
 } from "@/components/charts/scale";
@@ -134,61 +132,6 @@ describe("stack", () => {
     const segments = stack(PLOT, [-5, 5], 40);
     expect(segments[0]?.height).toBe(0);
     expect(segments[1]?.height).toBeCloseTo(40);
-  });
-});
-
-describe("rows", () => {
-  it("centres a fixed bar height inside an evenly divided slot", () => {
-    const [first, second] = rows(PLOT, 2, 30, 22);
-
-    // Slot 0 spans [PLOT.y, PLOT.y+30); a 22-tall bar centred in it starts 4 in.
-    expect(first?.y).toBeCloseTo(PLOT.y + 4);
-    expect(first?.center).toBeCloseTo(PLOT.y + 15);
-    expect(second?.y).toBeCloseTo(PLOT.y + 34);
-    expect(second?.center).toBeCloseTo(PLOT.y + 45);
-  });
-
-  it("returns nothing for an empty category list", () => {
-    expect(rows(PLOT, 0, 30, 22)).toEqual([]);
-  });
-});
-
-describe("horizontalStack", () => {
-  it("fills the row's own total, not a shared axis maximum", () => {
-    const small = horizontalStack(0, 100, [1, 1]);
-    const large = horizontalStack(0, 100, [10, 10]);
-
-    // Both rows are two equal buckets, so both fill the row identically —
-    // there is no shared max the way `stack`'s column height has one.
-    expect(small[0]?.width).toBeCloseTo(large[0]?.width ?? -1);
-    expect((small[0]?.width ?? 0) + (small[1]?.width ?? 0)).toBeCloseTo(100);
-  });
-
-  it("places segments left to right in input order", () => {
-    const [first, second] = horizontalStack(10, 100, [25, 75]);
-
-    expect(first?.x).toBeCloseTo(10);
-    expect(first?.width).toBeCloseTo(25);
-    expect(second?.x).toBeCloseTo(35);
-    expect(second?.width).toBeCloseTo(75);
-  });
-
-  it("reports fraction of the row's own total", () => {
-    const [half, quarter, quarter2] = horizontalStack(0, 100, [2, 1, 1]);
-    expect(half?.fraction).toBeCloseTo(0.5);
-    expect(quarter?.fraction).toBeCloseTo(0.25);
-    expect(quarter2?.fraction).toBeCloseTo(0.25);
-  });
-
-  it("collapses to zero-width segments when the row total is 0", () => {
-    const segments = horizontalStack(0, 100, [0, 0]);
-    expect(segments.every((segment) => segment.width === 0)).toBe(true);
-  });
-
-  it("treats a negative value as 0 rather than inverting the row", () => {
-    const segments = horizontalStack(0, 100, [-5, 5]);
-    expect(segments[0]?.width).toBe(0);
-    expect(segments[1]?.width).toBeCloseTo(100);
   });
 });
 

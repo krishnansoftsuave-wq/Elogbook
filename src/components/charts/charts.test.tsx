@@ -543,6 +543,57 @@ describe("KpiTrendCard", () => {
       screen.getByRole("img", { name: "Agreed Daily Prod. — daily values" })
     ).toBeInTheDocument();
   });
+
+  /**
+   * The prototype colours every increase green and every decrease red,
+   * unconditionally (`up?'#2E7D32':'#C0392B'`, app-source.txt 1884) — the
+   * default here (`lowerIsBetter` unset). Flaring is the one metric where
+   * that reads backwards: a *reduction* is the good outcome, so
+   * `ProductionKpiSection` opts it into `lowerIsBetter`. Both directions are
+   * asserted so a regression that flips only one of the two branches is
+   * still caught.
+   */
+  it("colours an increase destructive when lowerIsBetter", () => {
+    // 0.6 -> 1.2, the series' last two points, is +0.6 — flaring went up.
+    render(
+      <KpiTrendCard
+        {...ADP}
+        code="Flare"
+        fullLabel="Flaring Rate"
+        unit="t/d"
+        values={[0, 0.6, 1.2]}
+        lowerIsBetter
+      />
+    );
+
+    const delta = screen.getByText("+0.6 t/d vs prev");
+    expect(delta).toHaveClass("text-destructive");
+    expect(delta).not.toHaveClass("text-success");
+  });
+
+  it("colours a decrease success when lowerIsBetter", () => {
+    // 1.2 -> 0.6 is -0.6 — flaring went down, the good direction.
+    render(
+      <KpiTrendCard
+        {...ADP}
+        code="Flare"
+        fullLabel="Flaring Rate"
+        unit="t/d"
+        values={[0, 1.2, 0.6]}
+        lowerIsBetter
+      />
+    );
+
+    const delta = screen.getByText("-0.6 t/d vs prev");
+    expect(delta).toHaveClass("text-success");
+    expect(delta).not.toHaveClass("text-destructive");
+  });
+
+  it("leaves the default metric's increase-is-good colouring unaffected", () => {
+    render(<KpiTrendCard {...ADP} />);
+    const delta = screen.getByText("+1 MM vs prev");
+    expect(delta).toHaveClass("text-success");
+  });
 });
 
 describe("HorizontalStackedBarChart", () => {

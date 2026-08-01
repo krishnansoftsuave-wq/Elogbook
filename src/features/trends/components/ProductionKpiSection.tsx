@@ -27,6 +27,17 @@ import { cn } from "@/lib/utils";
  * Grid: `grid-cols-1 sm:grid-cols-2 xl:grid-cols-5` — one column on mobile, two
  * on tablet, all five side by side only once there is room (the prototype's
  * fixed `repeat(5,1fr)` only ever ran at 1440×900).
+ *
+ * **`lowerIsBetter` is keyed by `tone`, the same slot the colour map above
+ * uses** — not by `code`, which `features/trends/schemas.ts` leaves an open
+ * string. `series-5` is already permanently committed to Flare by the colour
+ * map's own comment; reusing that same slot here rather than matching on the
+ * PROVISIONAL string `"Flare"` keeps both facts about "which series is Flare"
+ * in one place. `true` for exactly that one: ADP, Spot, AVG and TLP are all
+ * production/throughput measures where more is the good outcome; flaring is
+ * the opposite, a reduction is what the control room wants to see.
+ * `KpiTrendCard`'s own docblock explains why this is a deliberate deviation
+ * from the prototype rather than a transcription fix.
  */
 
 const SERIES_TONE_TO_CHART_TONE: Record<ProductionKpi["tone"], ChartTone> = {
@@ -35,6 +46,14 @@ const SERIES_TONE_TO_CHART_TONE: Record<ProductionKpi["tone"], ChartTone> = {
   "series-3": "chart-4", // AVG — green
   "series-4": "chart-7", // TLP — purple
   "series-5": "chart-3", // Flare — amber/orange
+};
+
+const LOWER_IS_BETTER_TONE: Record<ProductionKpi["tone"], boolean> = {
+  "series-1": false,
+  "series-2": false,
+  "series-3": false,
+  "series-4": false,
+  "series-5": true, // Flare
 };
 
 export interface ProductionKpiSectionProps {
@@ -62,6 +81,7 @@ export const ProductionKpiSection = ({
         unit={kpi.unit}
         values={kpi.values}
         tone={SERIES_TONE_TO_CHART_TONE[kpi.tone]}
+        lowerIsBetter={LOWER_IS_BETTER_TONE[kpi.tone]}
       />
     ))}
   </div>

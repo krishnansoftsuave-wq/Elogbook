@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  DEFAULT_TREND_PERIOD,
   trendPeriodSchema,
   type TrendsSummaryWire,
 } from "@/features/trends/schemas";
@@ -49,9 +50,10 @@ const periodQuerySchema = z.object({ period: trendPeriodSchema });
 export const GET = mockRoute({ permission: "report:read" }, ({ request }) => {
   const { searchParams } = new URL(request.url);
 
-  // Absent defaults to "7d"; anything present that isn't 7d/14d/30d is a 422.
+  // Absent defaults to DEFAULT_TREND_PERIOD; anything present that isn't
+  // 7d/14d/30d is a 422.
   const parsedPeriod = periodQuerySchema.safeParse({
-    period: searchParams.get("period") ?? "7d",
+    period: searchParams.get("period") ?? DEFAULT_TREND_PERIOD,
   });
   if (!parsedPeriod.success) return validationError(parsedPeriod.error);
 

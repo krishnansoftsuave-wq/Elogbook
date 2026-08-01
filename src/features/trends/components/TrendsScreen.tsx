@@ -11,11 +11,17 @@ import { useCurrentShift } from "@/features/shifts/api/queries";
 import { useTrends } from "@/features/trends/api/queries";
 import { ComplianceSection } from "@/features/trends/components/ComplianceSection";
 import { EquipmentFlareShipGrid } from "@/features/trends/components/EquipmentFlareShipGrid";
-import { PeriodPills } from "@/features/trends/components/PeriodPills";
+import {
+  PERIOD_LABEL,
+  PeriodPills,
+} from "@/features/trends/components/PeriodPills";
 import { ProductionKpiSection } from "@/features/trends/components/ProductionKpiSection";
 import { TrendsExportMenu } from "@/features/trends/components/TrendsExportMenu";
 import { TrendsSkeleton } from "@/features/trends/components/TrendsSkeleton";
-import type { TrendPeriod } from "@/features/trends/schemas";
+import {
+  DEFAULT_TREND_PERIOD,
+  type TrendPeriod,
+} from "@/features/trends/schemas";
 import { getErrorMessage, getStatusCode } from "@/lib/api-error";
 import { formatShiftDate } from "@/lib/datetime";
 
@@ -54,7 +60,7 @@ import { formatShiftDate } from "@/lib/datetime";
  * (`app-source.txt` 1917/1974/1978).
  */
 export const TrendsScreen = () => {
-  const [period, setPeriod] = useState<TrendPeriod>("7d");
+  const [period, setPeriod] = useState<TrendPeriod>(DEFAULT_TREND_PERIOD);
   const { data, error, isLoading, isFetching } = useTrends(period);
   const { data: shift, isLoading: isShiftLoading } = useCurrentShift();
 
@@ -81,7 +87,7 @@ export const TrendsScreen = () => {
         <div className="flex flex-col gap-4">
           <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight">
             <Gauge className="size-4 text-muted-foreground" aria-hidden />
-            Production KPIs — 7-Day Trend
+            Production KPIs — {PERIOD_LABEL[period]} Trend
           </h2>
           <ProductionKpiSection productionKpis={data.productionKpis} />
           {/* The prototype's own data-source footnote, app-source.txt 1919. */}

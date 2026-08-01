@@ -397,6 +397,23 @@ export const toShipArrival = (wire: ShipArrivalWire): ShipArrival => ({
 });
 
 /* -------------------------------------------------------------------------- */
+/* Trend period — declared here, ahead of the response schema below, because   */
+/* `trendsSummaryWireSchema.period` needs the enum rather than a bare string   */
+/* -------------------------------------------------------------------------- */
+
+/** The prototype's three period pills (`trendPeriod`, app-source.txt 1972). */
+export const TREND_PERIODS = ["7d", "14d", "30d"] as const;
+
+export const trendPeriodSchema = z.enum(TREND_PERIODS);
+export type TrendPeriod = z.infer<typeof trendPeriodSchema>;
+
+/** `trendPeriod`'s own initial state (app-source.txt 1901) — the window a
+ * caller gets when it asks for none, shared by the mock route (an absent
+ * `?period=`) and the screen (`useState`'s initial value), so the two cannot
+ * drift to different defaults. */
+export const DEFAULT_TREND_PERIOD: TrendPeriod = "7d";
+
+/* -------------------------------------------------------------------------- */
 /* The screen's one response                                                   */
 /* -------------------------------------------------------------------------- */
 
@@ -411,7 +428,7 @@ export const toShipArrival = (wire: ShipArrivalWire): ShipArrival => ({
  */
 export const trendsSummaryWireSchema = z.object({
   /** Echoes the requested window, so a stale response is detectable. */
-  period: z.string(),
+  period: trendPeriodSchema,
   production_kpis: z.array(productionKpiWireSchema),
   compliance_categories: z.array(complianceCategoryWireSchema),
   equipment_out_of_service: z.array(equipmentOutOfServiceWireSchema),
@@ -422,7 +439,7 @@ export const trendsSummaryWireSchema = z.object({
 });
 
 export const trendsSummarySchema = z.object({
-  period: z.string(),
+  period: trendPeriodSchema,
   productionKpis: z.array(productionKpiSchema),
   complianceCategories: z.array(complianceCategorySchema),
   equipmentOutOfService: z.array(equipmentOutOfServiceSchema),
@@ -456,12 +473,6 @@ export const trendsSummaryResponseSchema = envelopeSchema(
 /* -------------------------------------------------------------------------- */
 /* Requests the client sends                                                   */
 /* -------------------------------------------------------------------------- */
-
-/** The prototype's three period pills (`trendPeriod`, app-source.txt 1972). */
-export const TREND_PERIODS = ["7d", "14d", "30d"] as const;
-
-export const trendPeriodSchema = z.enum(TREND_PERIODS);
-export type TrendPeriod = z.infer<typeof trendPeriodSchema>;
 
 /**
  * **FR-AN-02** — "Provide trend dashboards with **date-range selection and
