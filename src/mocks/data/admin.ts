@@ -4,6 +4,7 @@ import {
   type ChannelPermission,
   type NotificationPermissionKey,
   type NotificationPermissionWire,
+  type RoleWire,
   type ShiftConfigWire,
   type WorkflowWire,
 } from "@/features/admin/schemas";
@@ -201,3 +202,142 @@ export const seedNotificationPermissions = (): NotificationPermissionWire[] =>
 
 /** Exported for the seed test, which asserts the administrator row is complete. */
 export const ADMINISTRATOR_USERNAME = PEOPLE.ADMINISTRATOR;
+
+/* -------------------------------------------------------------------------- */
+/* Roles — §6 / FR-ADM-02                                                     */
+/* -------------------------------------------------------------------------- */
+
+/** Every module permission on — what "the platform's own access model" means for a base role. */
+const FULL_PERMISSIONS: RoleWire["permissions"] = {
+  assistant: { view: true, generate: true, approve: true, export: true },
+  summary: { view: true, generate: true, approve: true, export: true },
+  actions: { view: true, generate: true, approve: true, export: true },
+  reports: { view: true, generate: true, approve: true, export: true },
+};
+
+/** View-only everywhere — `roleFormScreen`'s own checkbox default (line 1625). */
+const VIEW_ONLY_PERMISSIONS: RoleWire["permissions"] = {
+  assistant: { view: true, generate: false, approve: false, export: false },
+  summary: { view: true, generate: false, approve: false, export: false },
+  actions: { view: true, generate: false, approve: false, export: false },
+  reports: { view: true, generate: false, approve: false, export: false },
+};
+
+/**
+ * The Roles admin table (`app-source.txt` 1569), transcribed row for row: the
+ * five base roles §6 defines, plus §6.1's Unit Manager and §6.6's Shutdown
+ * Coordinator and HSSE Officer baseline (all real, `roleLabel`-covered roles
+ * with no `ROLES` constant or AD group of their own yet — see
+ * `constants/roles.ts`), then the three Administrator-created custom roles the
+ * prototype seeds.
+ *
+ * **Shutdown Coordinator is `base`, not `custom`.** §6 line 161 says base
+ * roles "ship out of the box, including Unit Manager, Shutdown Coordinator and
+ * HSSE Officer", and §6.6 titles all three together as additional baseline
+ * roles. Seeding it `custom` made a BRD-mandated role deletable and its AD
+ * group editable (`api/v1/admin/roles/[id]/route.ts` :56, :92) — the two
+ * behaviours `type` actually governs.
+ *
+ * `member_count` is transcribed as the prototype's own number, not derived
+ * from `MOCK_ACCOUNTS` — that directory seeds six identities total, nowhere
+ * near "24 users", because it exists to prove sign-in, not to be a census.
+ *
+ * `permissions`/`data_scope` have no prototype source for these ten rows —
+ * `roleFormScreen` only ever edits a *new* role. Base roles seed full
+ * permissions, full plant, matching what §9.1 gives an Administrator via the
+ * wildcard; the four custom roles seed the form's own View-only default,
+ * full plant (§9.2), since nothing records what an Administrator actually
+ * granted them when the prototype's demo data was authored.
+ */
+export const seedRoles = (): RoleWire[] => [
+  {
+    id: "ROLE-0001",
+    name: "Operator",
+    member_count: 24,
+    ad_group: "ELOGBOOK_OPERATOR",
+    type: "base",
+    permissions: FULL_PERMISSIONS,
+    data_scope: "full_plant",
+  },
+  {
+    id: "ROLE-0002",
+    name: "Supervisor",
+    member_count: 6,
+    ad_group: "ELOGBOOK_SUPERVISOR",
+    type: "base",
+    permissions: FULL_PERMISSIONS,
+    data_scope: "full_plant",
+  },
+  {
+    id: "ROLE-0003",
+    name: "Management",
+    member_count: 3,
+    ad_group: "ELOGBOOK_MGMT",
+    type: "base",
+    permissions: FULL_PERMISSIONS,
+    data_scope: "full_plant",
+  },
+  {
+    id: "ROLE-0004",
+    name: "Administrator",
+    member_count: 2,
+    ad_group: "ELOGBOOK_ADMIN",
+    type: "base",
+    permissions: FULL_PERMISSIONS,
+    data_scope: "full_plant",
+  },
+  {
+    id: "ROLE-0005",
+    name: "HSSE Officer",
+    member_count: 2,
+    ad_group: "ELOGBOOK_HSSE",
+    type: "base",
+    permissions: FULL_PERMISSIONS,
+    data_scope: "full_plant",
+  },
+  {
+    id: "ROLE-0006",
+    name: "Unit Manager",
+    member_count: 3,
+    ad_group: "ELOGBOOK_UNITMGR",
+    type: "base",
+    permissions: FULL_PERMISSIONS,
+    data_scope: "full_plant",
+  },
+  {
+    id: "ROLE-0007",
+    name: "Shutdown Coordinator",
+    member_count: 1,
+    ad_group: "ELOGBOOK_SHUTDOWN",
+    type: "base",
+    permissions: VIEW_ONLY_PERMISSIONS,
+    data_scope: "full_plant",
+  },
+  {
+    id: "ROLE-0008",
+    name: "Turnaround Lead",
+    member_count: 1,
+    ad_group: "ELOGBOOK_TA_LEAD",
+    type: "custom",
+    permissions: VIEW_ONLY_PERMISSIONS,
+    data_scope: "full_plant",
+  },
+  {
+    id: "ROLE-0009",
+    name: "Contractor (Read-only)",
+    member_count: 5,
+    ad_group: "ELOGBOOK_CONTRACTOR",
+    type: "custom",
+    permissions: VIEW_ONLY_PERMISSIONS,
+    data_scope: "full_plant",
+  },
+  {
+    id: "ROLE-0010",
+    name: "Reliability Engineer",
+    member_count: 2,
+    ad_group: "ELOGBOOK_RELIABILITY",
+    type: "custom",
+    permissions: VIEW_ONLY_PERMISSIONS,
+    data_scope: "full_plant",
+  },
+];

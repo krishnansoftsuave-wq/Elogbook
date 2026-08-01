@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { PageHeader } from "@/components/layout/PageHeader";
+import { AdminTabs } from "@/features/admin/components/AdminTabs";
 import { WorkflowSettings } from "@/features/admin/components/WorkflowSettings";
 
 export const metadata: Metadata = { title: "Workflows" };
@@ -19,6 +20,7 @@ export default function AdminWorkflowsPage() {
         title="Workflows"
         description="Turn optional capabilities on for Operators, Supervisors and Management. Every switch is off until somebody enables it, and a change takes effect immediately for everyone."
       />
+      <AdminTabs />
       <WorkflowSettings />
     </>
   );

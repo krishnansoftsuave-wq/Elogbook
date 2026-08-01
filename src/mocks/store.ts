@@ -6,12 +6,18 @@ import type {
 } from "@/features/actions/schemas";
 import type {
   NotificationPermissionWire,
+  RoleWire,
   ShiftConfigWire,
   WorkflowKey,
   WorkflowWire,
 } from "@/features/admin/schemas";
 import type { AssistantFeedbackWire } from "@/features/assistant/schemas";
 import type { AuditAction, AuditEventWire } from "@/features/audit/schemas";
+import type {
+  DashboardConfigWire,
+  DashboardVersionWire,
+  LibraryWidgetWire,
+} from "@/features/dashboard-builder/schemas";
 import type { DashboardWidgetWire } from "@/features/dashboards/schemas";
 import type { DecisionWire } from "@/features/decisions/schemas";
 import type { NotificationWire } from "@/features/notifications/schemas";
@@ -25,10 +31,16 @@ import {
 } from "@/mocks/data/actions";
 import {
   seedNotificationPermissions,
+  seedRoles,
   seedShiftConfig,
   seedWorkflows,
 } from "@/mocks/data/admin";
 import { seedAuditEvents } from "@/mocks/data/audit";
+import {
+  seedDashboardConfigs,
+  seedDashboardVersions,
+  seedLibraryWidgets,
+} from "@/mocks/data/dashboard-builder";
 import { seedDashboardWidgets } from "@/mocks/data/dashboards";
 import { seedDecisions } from "@/mocks/data/decisions";
 import { seedNotifications } from "@/mocks/data/notifications";
@@ -75,8 +87,19 @@ export interface MockStoreData {
   workflows: WorkflowWire[];
   shiftConfig: ShiftConfigWire;
   notificationPermissions: NotificationPermissionWire[];
+  /** §6 / FR-ADM-02 — base roles plus Administrator-created custom roles. */
+  roles: RoleWire[];
   auditEvents: AuditEventWire[];
   dashboardWidgets: DashboardWidgetWire[];
+  /**
+   * ⚠️ PROTOTYPE-ONLY, like the feature that reads it
+   * (`features/dashboard-builder/schemas.ts`) — no BRD basis. One entity per
+   * role's dashboard, distinct from `dashboardWidgets`'s single shared
+   * catalog above.
+   */
+  dashboardConfigs: DashboardConfigWire[];
+  dashboardVersions: DashboardVersionWire[];
+  dashboardLibrary: LibraryWidgetWire[];
   /**
    * FR-FB-01 capture. Seeded empty on purpose — feedback is a record of what a
    * real user thought, and fabricating a few thumbs-downs would put invented
@@ -111,8 +134,12 @@ const buildSeed = (): MockStoreData => {
     workflows: seedWorkflows(),
     shiftConfig: seedShiftConfig(),
     notificationPermissions: seedNotificationPermissions(),
+    roles: seedRoles(),
     auditEvents: seedAuditEvents(base),
     dashboardWidgets: seedDashboardWidgets(),
+    dashboardConfigs: seedDashboardConfigs(base),
+    dashboardVersions: seedDashboardVersions(base),
+    dashboardLibrary: seedLibraryWidgets(),
     assistantFeedback: [],
     users: seedUsers(),
   };

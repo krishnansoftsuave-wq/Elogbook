@@ -62,6 +62,11 @@ export const dashboardWidgetListResponseSchema = envelopeSchema(
   z.object({ items: z.array(dashboardWidgetWireSchema) })
 );
 
+/** `PUT /dashboards/widgets/:id` answers with the single widget it changed. */
+export const dashboardWidgetDetailResponseSchema = envelopeSchema(
+  dashboardWidgetWireSchema
+);
+
 export const dashboardWidgetUpdateSchema = z.object({
   assigned_roles: z.array(z.enum(ROLE_VALUES)),
   enabled: z.boolean(),

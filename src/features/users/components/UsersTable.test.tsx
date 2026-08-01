@@ -1,8 +1,9 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { UsersTable } from "@/features/users/components/UsersTable";
+import { USER_FILTERS_DEFAULTS } from "@/features/users/hooks/userFilterParams";
 import {
   installMockApi,
   mockRoute,
@@ -11,6 +12,17 @@ import {
   envelope,
 } from "@/test/mockApi";
 import { renderWithProviders } from "@/test/utils";
+
+/*
+  `useUserFilters` mirrors filter state into the URL via `router.replace`,
+  same as `AuditTable.test.tsx`'s mock for `useAuditFilters`.
+*/
+const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/admin/users",
+  useRouter: () => ({ replace }),
+}));
 
 const ADMIN_PERMISSIONS = ["*"];
 /** §6.5 — "Can view users", and nothing that manages them. */
@@ -62,7 +74,7 @@ describe("UsersTable", () => {
     installMockApi({ permissions: ADMIN_PERMISSIONS });
     stubUsers();
 
-    renderWithProviders(<UsersTable />);
+    renderWithProviders(<UsersTable initialFilters={USER_FILTERS_DEFAULTS} />);
 
     expect(await screen.findByText("Said Al-Busaidi")).toBeVisible();
     expect(screen.getByText("said.albusaidi")).toBeVisible();
@@ -76,7 +88,7 @@ describe("UsersTable", () => {
     installMockApi({ permissions: ADMIN_PERMISSIONS });
     stubUsers([MULTI_ROLE]);
 
-    renderWithProviders(<UsersTable />);
+    renderWithProviders(<UsersTable initialFilters={USER_FILTERS_DEFAULTS} />);
 
     const row = await screen.findByRole("row", { name: /Maryam Al-Zadjali/ });
     expect(within(row).getByText("Operator")).toBeVisible();
@@ -92,7 +104,7 @@ describe("UsersTable", () => {
     installMockApi({ permissions: ADMIN_PERMISSIONS });
     stubUsers([UNMAPPED]);
 
-    renderWithProviders(<UsersTable />);
+    renderWithProviders(<UsersTable initialFilters={USER_FILTERS_DEFAULTS} />);
 
     const row = await screen.findByRole("row", { name: /Hamed Al-Siyabi/ });
     expect(within(row).getByText("No platform role")).toBeVisible();
@@ -108,7 +120,7 @@ describe("UsersTable", () => {
     installMockApi({ permissions: SUPER_USER_PERMISSIONS });
     stubUsers();
 
-    renderWithProviders(<UsersTable />);
+    renderWithProviders(<UsersTable initialFilters={USER_FILTERS_DEFAULTS} />);
 
     expect(
       await screen.findByRole("link", { name: "Preview Said Al-Busaidi" })
@@ -122,7 +134,7 @@ describe("UsersTable", () => {
     installMockApi({ permissions: ADMIN_PERMISSIONS });
     stubUsers();
 
-    renderWithProviders(<UsersTable />);
+    renderWithProviders(<UsersTable initialFilters={USER_FILTERS_DEFAULTS} />);
 
     expect(
       await screen.findByRole("button", { name: "Suspend Said Al-Busaidi" })
@@ -133,7 +145,7 @@ describe("UsersTable", () => {
     installMockApi({ permissions: ADMIN_PERMISSIONS });
     stubUsers([user({ status: "suspended" })]);
 
-    renderWithProviders(<UsersTable />);
+    renderWithProviders(<UsersTable initialFilters={USER_FILTERS_DEFAULTS} />);
 
     expect(
       await screen.findByRole("button", {
@@ -158,7 +170,7 @@ describe("UsersTable", () => {
       return envelope(user({ status: "suspended" }));
     });
 
-    renderWithProviders(<UsersTable />);
+    renderWithProviders(<UsersTable initialFilters={USER_FILTERS_DEFAULTS} />);
 
     await userEvent.click(
       await screen.findByRole("button", { name: "Suspend Said Al-Busaidi" })
@@ -189,7 +201,7 @@ describe("UsersTable", () => {
       return envelope(user());
     });
 
-    renderWithProviders(<UsersTable />);
+    renderWithProviders(<UsersTable initialFilters={USER_FILTERS_DEFAULTS} />);
 
     await userEvent.click(
       await screen.findByRole("button", { name: "Suspend Said Al-Busaidi" })
@@ -217,7 +229,7 @@ describe("UsersTable", () => {
     installMockApi({ permissions: ADMIN_PERMISSIONS });
     stubUsers();
 
-    renderWithProviders(<UsersTable />);
+    renderWithProviders(<UsersTable initialFilters={USER_FILTERS_DEFAULTS} />);
     await screen.findByText("Said Al-Busaidi");
 
     const row = rowFor("Said Al-Busaidi");

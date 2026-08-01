@@ -39,51 +39,30 @@ describe("ShiftTimingsForm", () => {
     expect(await screen.findByLabelText("Day shift start")).toHaveValue(
       "06:00"
     );
+    expect(screen.getByLabelText("Day shift end")).toHaveValue("18:00");
+    expect(screen.getByLabelText("Night shift start")).toHaveValue("18:00");
+    expect(screen.getByLabelText("Night shift end")).toHaveValue("06:00");
     expect(screen.getByLabelText("Handover overlap (minutes)")).toHaveValue(15);
   });
 
   /**
-   * **FR-HOME-03** defines a shift as "a 12-hour period", so the other three
-   * boundaries follow from the start time rather than being independently
-   * editable. The prototype draws four free-text inputs — the named deviation.
+   * **All four boundaries are independently editable**, matching the
+   * prototype's literal layout (`app-source.txt` 1662–1674).
    */
-  it("shows the three derived boundaries and does not let them be edited", async () => {
-    installMockApi({ permissions: ADMIN_PERMISSIONS });
-    stubConfig();
-
-    renderWithProviders(<ShiftTimingsForm />);
-    await screen.findByLabelText("Day shift start");
-
-    expect(screen.getByText("Day shift end")).toBeVisible();
-    expect(screen.getByText("Night shift start")).toBeVisible();
-    expect(screen.getByText("Night shift end")).toBeVisible();
-
-    // Two editable controls and no more — a fifth would mean a boundary that
-    // the shift arithmetic cannot represent had crept back in.
-    expect(screen.queryByLabelText("Day shift end")).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Night shift start")
-    ).not.toBeInTheDocument();
-  });
-
-  it("recomputes the derived boundaries as the start time changes", async () => {
+  it("lets all four boundaries be edited", async () => {
     installMockApi({ permissions: ADMIN_PERMISSIONS });
     stubConfig();
 
     renderWithProviders(<ShiftTimingsForm />);
 
-    const start = await screen.findByLabelText("Day shift start");
-    await userEvent.clear(start);
-    await userEvent.type(start, "07:30");
+    const dayEnd = await screen.findByLabelText("Day shift end");
+    await userEvent.clear(dayEnd);
+    await userEvent.type(dayEnd, "19:00");
 
-    // 07:30 + 12h. Shown before saving, so nobody commits a boundary they have
-    // not seen the consequences of.
-    await waitFor(() =>
-      expect(screen.getAllByText("19:30")).not.toHaveLength(0)
-    );
+    expect(dayEnd).toHaveValue("19:00");
   });
 
-  it("submits the full five-field wire object, derived from two", async () => {
+  it("submits the full five-field wire object as edited", async () => {
     installMockApi({ permissions: ADMIN_PERMISSIONS });
     stubConfig();
 
@@ -96,8 +75,19 @@ describe("ShiftTimingsForm", () => {
     renderWithProviders(<ShiftTimingsForm />);
 
     const start = await screen.findByLabelText("Day shift start");
+    const end = await screen.findByLabelText("Day shift end");
+    const nightStart = await screen.findByLabelText("Night shift start");
+    const nightEnd = await screen.findByLabelText("Night shift end");
+
     await userEvent.clear(start);
     await userEvent.type(start, "07:00");
+    await userEvent.clear(end);
+    await userEvent.type(end, "19:00");
+    await userEvent.clear(nightStart);
+    await userEvent.type(nightStart, "19:00");
+    await userEvent.clear(nightEnd);
+    await userEvent.type(nightEnd, "07:00");
+
     await userEvent.click(
       screen.getByRole("button", { name: "Save shift timings" })
     );
@@ -111,6 +101,36 @@ describe("ShiftTimingsForm", () => {
         overlap_minutes: 15,
       })
     );
+  });
+
+  /**
+   * **FR-HOME-03** fixes a shift at twelve hours. Editable boundaries make
+   * this a validation rule instead of an arithmetic guarantee, so a bad split
+   * must be refused with a message that names the requirement.
+   */
+  it("refuses to submit a day shift that is not twelve hours, and says why", async () => {
+    installMockApi({ permissions: ADMIN_PERMISSIONS });
+    stubConfig();
+
+    let saves = 0;
+    mockRoute("PUT", /\/admin\/shift-config$/, () => {
+      saves += 1;
+      return envelope(SEEDED);
+    });
+
+    renderWithProviders(<ShiftTimingsForm />);
+
+    const end = await screen.findByLabelText("Day shift end");
+    await userEvent.clear(end);
+    await userEvent.type(end, "14:00");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save shift timings" })
+    );
+
+    expect(
+      await screen.findByText(/exactly twelve hours \(FR-HOME-03\)/)
+    ).toBeVisible();
+    expect(saves).toBe(0);
   });
 
   it("refuses to submit a negative overlap, and says why", async () => {

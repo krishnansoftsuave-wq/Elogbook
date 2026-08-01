@@ -52,7 +52,12 @@ export const DataTable = <TData,>({
   const rows = table.getRowModel().rows;
 
   return (
-    <div className={cn("overflow-x-auto", bordered && "rounded-md border")}>
+    <div
+      className={cn(
+        "overflow-x-auto bg-card",
+        bordered && "rounded-md border border-border"
+      )}
+    >
       <Table>
         <caption className="sr-only">{caption}</caption>
         <TableHeader>

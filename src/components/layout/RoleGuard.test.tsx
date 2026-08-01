@@ -225,8 +225,9 @@ describe("RoleGuard", () => {
   });
 
   it("blocks the admin tree for a session whose nav item is hidden (FR-ADM-03)", async () => {
-    // Hiding a link is not access control. The operator never sees the Users
-    // link, and typing the route in anyway still does not get them in.
+    // Hiding a link is not access control. The operator never sees the
+    // Administration link, and typing the route in anyway still does not get
+    // them in.
     signInWith(["shift:read", "action:read"]);
 
     renderWithProviders(
@@ -242,7 +243,7 @@ describe("RoleGuard", () => {
       await screen.findByRole("link", { name: "Pending actions" })
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: "Users" })
+      screen.queryByRole("link", { name: "Administration" })
     ).not.toBeInTheDocument();
 
     await vi.waitFor(() =>

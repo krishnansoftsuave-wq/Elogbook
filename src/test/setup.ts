@@ -29,14 +29,17 @@ if (!window.matchMedia) {
 }
 
 if (!window.ResizeObserver) {
-  // A real class, not `vi.fn().mockImplementation(() => ({...}))` — floating-ui's
-  // `autoUpdate` (behind `Popover`) does `new ResizeObserver(cb)` directly, and an
-  // arrow function returned from a mock implementation is not itself a
-  // constructor, so that shape threw "is not a constructor" the first time
-  // anything used it.
-  window.ResizeObserver = class {
+  // A real class, not `vi.fn().mockImplementation()`: `@dnd-kit/core`
+  // (`features/dashboard-builder`) calls `new ResizeObserver(...)` directly
+  // off the global rather than through `window.`, and floating-ui's
+  // `autoUpdate` (behind `Popover`) does the same — a mock function or an
+  // arrow function returned from a mock implementation is not reliably
+  // usable as a constructor in every environment this suite runs in.
+  class ResizeObserverStub {
     observe = vi.fn();
     unobserve = vi.fn();
     disconnect = vi.fn();
-  } as unknown as typeof ResizeObserver;
+  }
+  window.ResizeObserver = ResizeObserverStub;
+  globalThis.ResizeObserver = ResizeObserverStub;
 }

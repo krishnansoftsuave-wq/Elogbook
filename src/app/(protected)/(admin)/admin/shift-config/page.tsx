@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { PageHeader } from "@/components/layout/PageHeader";
+import { AdminTabs } from "@/features/admin/components/AdminTabs";
 import { ShiftTimingsForm } from "@/features/admin/components/ShiftTimingsForm";
 
 export const metadata: Metadata = { title: "Shift timings" };
@@ -17,6 +18,7 @@ export default function AdminShiftConfigPage() {
         title="Shift timings"
         description="When a shift opens and how long the handover overlap runs. Changing these moves the shift context on every dashboard and the window a generated summary covers."
       />
+      <AdminTabs />
       <ShiftTimingsForm />
     </>
   );

@@ -5,16 +5,15 @@ import { usePathname } from "next/navigation";
 import {
   Bell,
   Bot,
-  Clock,
   FileText,
   History,
   LayoutDashboard,
+  LayoutGrid,
   ListChecks,
   PanelLeftClose,
   PanelLeftOpen,
-  SlidersHorizontal,
+  Settings,
   TrendingUp,
-  Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -37,10 +36,16 @@ interface NavItem {
   /** ALL of these are required for the item to appear. */
   permissions: readonly Permission[];
   /**
-   * The prototype module this row belongs to (`ROLE_MODULES`). Several rows can
-   * share one: the prototype's single `admin` module is three screens here.
+   * The prototype module this row belongs to (`ROLE_MODULES`).
    */
   module: string;
+  /**
+   * Path prefixes, beyond `href` itself, that keep this row highlighted. The
+   * "Administration" row links to `/admin/users` but must also read active on
+   * every other tab `AdminTabs` fans out to — everything under `/admin` except
+   * `/admin/audit`, which is its own sidebar row.
+   */
+  activePrefixes?: readonly string[];
 }
 
 /**
@@ -105,28 +110,25 @@ const NAV_ITEMS: readonly NavItem[] = [
     permissions: ROUTE_PERMISSIONS.NOTIFICATIONS.permissions,
   },
   {
+    // One row for the whole `admin` module — `AdminTabs` fans it out into the
+    // Users/Roles/Workflows/Configuration/Dashboards/Notifications tab strip
+    // rather than each getting its own sidebar entry (`AdminTabs.tsx`).
     href: ROUTES.ADMIN.USERS,
     module: "admin",
-    label: "Users",
-    icon: Users,
+    label: "Administration",
+    icon: Settings,
     permissions: ROUTE_PERMISSIONS.ADMIN.permissions,
-  },
-  {
-    href: ROUTES.ADMIN.WORKFLOWS,
-    module: "admin",
-    label: "Workflows",
-    icon: SlidersHorizontal,
-    // `access:control`, which both admin-tree roles hold — §6.5 gives the Super
-    // User comment and decision-workflow access, so hiding this from them would
-    // hide a capability the BRD grants.
-    permissions: ROUTE_PERMISSIONS.ADMIN_WORKFLOWS.permissions,
-  },
-  {
-    href: ROUTES.ADMIN.SHIFT_CONFIG,
-    module: "admin",
-    label: "Shift timings",
-    icon: Clock,
-    permissions: ROUTE_PERMISSIONS.ADMIN_SHIFT_CONFIG.permissions,
+    activePrefixes: [
+      ROUTES.ADMIN.ROLES,
+      ROUTES.ADMIN.WORKFLOWS,
+      ROUTES.ADMIN.SHIFT_CONFIG,
+      ROUTES.ADMIN.NOTIFICATIONS,
+      ROUTES.ADMIN.DASHBOARDS,
+      // NOT `DASHBOARD_BUILDER.LIST` — that route now has its own sidebar
+      // row below, and including it here highlighted both rows at once
+      // whenever a Super User reached the builder via the Administration →
+      // Dashboards tab.
+    ],
   },
   {
     // The prototype gives Audit Log its own top-level nav row rather than an
@@ -136,6 +138,22 @@ const NAV_ITEMS: readonly NavItem[] = [
     label: "Audit log",
     icon: History,
     permissions: ROUTE_PERMISSIONS.ADMIN_AUDIT.permissions,
+  },
+  {
+    // ⚠️ PROTOTYPE-ONLY — no BRD basis, unlike every row above. The
+    // prototype's `superuser.nav` gives `dashboards` its own top-level row,
+    // labelled "Dashboard Builder" with the `dashboard_customize` icon,
+    // alongside — not nested under — `admin` (`app-source.txt` line 16).
+    // `ROLE_MODULES.super_user` already carries the `dashboards` module key
+    // with no route behind it; this is that route. The Administration →
+    // Dashboards tab (`AdminTabs.tsx`) opens the same screen for an
+    // Administrator, who has no row of their own for it. See
+    // `features/dashboard-builder/schemas.ts`.
+    href: ROUTES.ADMIN.DASHBOARD_BUILDER.LIST,
+    module: "dashboards",
+    label: "Dashboard Builder",
+    icon: LayoutGrid,
+    permissions: ROUTE_PERMISSIONS.ADMIN_DASHBOARD_BUILDER.permissions,
   },
 ];
 
@@ -159,8 +177,9 @@ export const Sidebar = () => {
     name the session's role — a custom role has no module list, and filtering by
     an empty one would blank the nav rather than fall back to permissions.
 
-    Modules with no route here (`trends`, `reports`, `dashboards`, `decisions`)
-    simply match no item, so the splice below can never produce a dead link.
+    Modules with no route here (`trends`, `reports`, `decisions`) simply
+    match no item, so the splice below can never produce a dead link.
+    `dashboards` now does have one — Dashboard Builder, ⚠️ prototype-only.
   */
   const modules = modulesFor(role, workflowEnabled);
   const roleKnown = actualRole !== null || isImpersonating;
@@ -209,8 +228,14 @@ export const Sidebar = () => {
           leading edge (`app-source.txt` 216–218), not rounded pills — so the
           nav cancels the rail's horizontal padding rather than inheriting it. */}
       <nav aria-label="Main" className="-mx-3 flex flex-col">
-        {items.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname === href || pathname.startsWith(`${href}/`);
+        {items.map(({ href, label, icon: Icon, activePrefixes }) => {
+          const isActive =
+            pathname === href ||
+            pathname.startsWith(`${href}/`) ||
+            (activePrefixes ?? []).some(
+              (prefix) =>
+                pathname === prefix || pathname.startsWith(`${prefix}/`)
+            );
           return (
             <Link
               key={href}

@@ -197,9 +197,12 @@ export const subCategoryOnSwitch = (
  * identical — so this is keyed by role, which is why there are **five** nav sets
  * and not twelve.
  *
- * ⚠️ **Four of these keys have no route in this build**: `trends`, `reports`,
- * `dashboards` and `decisions`. They are real BRD features (FR-AN-*, FR-REP-*,
- * FR-DASH-*) that are simply unbuilt, and they are kept here because the
+ * ⚠️ **Three of these keys have no route in this build**: `trends`, `reports`
+ * and `decisions`. They are real BRD features (FR-AN-*, FR-REP-*, FR-DASH-*)
+ * that are simply unbuilt. `dashboards` now has a route — Dashboard Builder —
+ * but it is prototype-parity work with no FR/NFR behind it
+ * (`features/dashboard-builder/schemas.ts`), unlike the other three. They
+ * are kept here because the
  * switcher's "N modules" subtitle is **derived from this list** and must read
  * the role's module entitlement — 5 / 6 / 5, as the prototype shows — rather
  * than however much of it this build has finished. `Sidebar` renders only the

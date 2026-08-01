@@ -36,7 +36,7 @@ import { actorSchema, actorWireSchema, toActor } from "@/types/actor";
  * widget assignments and request resolutions, and filtering `VIEW_ACTION` would
  * have returned comment posts.
  *
- * Three members are deliberately never emitted, and all three stay because this
+ * Two members are deliberately never emitted, and both stay because this
  * list is the **contract**, not an inventory of what this build happens to do:
  *
  * - `LOGOUT` — there is no logout endpoint (`authentication_flow.md` §9: auth is
@@ -44,10 +44,14 @@ import { actorSchema, actorWireSchema, toActor } from "@/types/actor";
  *   let a browser write to an append-only store on its own say-so.
  * - `EXPORT_REPORT` — no export endpoint exists at all, so **FR-REP-06** is
  *   reported unmet rather than faked.
- * - `UPDATE_ROLE` — left with no emitter by Phase 3b. Every handler that used it
- *   was borrowing it (`ASSIGN_WIDGET`, `RESOLVE_REQUEST`, `UPDATE_USER_ACCESS`
- *   each took over one case), and roles come from AD (**FR-AUTH-02**), so
- *   nothing in this build can change one. FR-ADM-02's custom roles will.
+ *
+ * `UPDATE_ROLE` was a third, left with no emitter by Phase 3b: every handler
+ * that used it was borrowing it (`ASSIGN_WIDGET`, `RESOLVE_REQUEST`,
+ * `UPDATE_USER_ACCESS` each took over one case), and roles come from AD
+ * (**FR-AUTH-02**), so nothing in that build could change one. `PUT
+ * /admin/roles/:id` now emits it for real — for a **custom** role only; a
+ * base role stays AD's, and its own write path 409s before this verb is ever
+ * reached.
  */
 export const AUDIT_ACTIONS = [
   /** Emitted by `POST /dev/token`, success and failure — FR-ADM-05, §9.3. */
@@ -69,6 +73,10 @@ export const AUDIT_ACTIONS = [
   "RECORD_DECISION",
   "COMMENT_DECISION",
   "UPDATE_ROLE",
+  /** §6 / FR-ADM-02 — an Administrator creating a custom role. */
+  "CREATE_ROLE",
+  /** §6 / FR-ADM-02 — an Administrator deleting a custom role. */
+  "DELETE_ROLE",
   /** FR-ADM-06 / FR-DASH-02 — a widget assigned to a role is not a role change. */
   "ASSIGN_WIDGET",
   /** ⚠️ PROTOTYPE-ONLY, like `/requests` itself — no BRD basis. */
@@ -96,6 +104,16 @@ export const AUDIT_ACTIONS = [
    */
   "ASSISTANT_FEEDBACK",
   "RETENTION_PURGE",
+  /**
+   * ⚠️ PROTOTYPE-ONLY, like `/dashboard-builder` itself — no BRD basis. The
+   * draft half of the prototype's `dashboards()` builder flow
+   * (`features/dashboard-builder/schemas.ts`).
+   */
+  "SAVE_DASHBOARD_DRAFT",
+  /** ⚠️ PROTOTYPE-ONLY — publishing a per-role dashboard config. */
+  "PUBLISH_DASHBOARD",
+  /** ⚠️ PROTOTYPE-ONLY — reverting a per-role dashboard to a prior version. */
+  "RESTORE_DASHBOARD_VERSION",
 ] as const;
 
 export const auditActionSchema = z.enum(AUDIT_ACTIONS);
