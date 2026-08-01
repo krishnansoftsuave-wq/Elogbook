@@ -1,10 +1,11 @@
-import { Inbox } from "lucide-react";
+import { Inbox, TriangleAlert } from "lucide-react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { EmptyState } from "@/components/EmptyState";
 import { OverdueFlag } from "@/components/OverdueFlag";
 import { PriorityDot } from "@/components/PriorityDot";
+import { StatTile } from "@/components/StatTile";
 import { StatusPill } from "@/components/StatusPill";
 import { ACTION_STATUS_VALUES, PRIORITY_VALUES } from "@/types/operations";
 import { DECISION_STATUS_VALUES } from "@/features/decisions/schemas";
@@ -126,6 +127,167 @@ describe("OverdueFlag — FR-PA-06", () => {
   it("carries the state in text, not colour alone", () => {
     render(<OverdueFlag dueAt={PAST} status="open" at={NOW} />);
     expect(screen.getByText("Overdue")).toBeInTheDocument();
+  });
+});
+
+/**
+ * Promoted from `features/home/components/StatTile.tsx` — the prototype's
+ * `trendTile` and the "Shift KPIs" widget's tile are the same shape. See
+ * `StatTile.tsx`'s docblock for why it moved here rather than into
+ * `components/charts/` alongside the SVG primitives.
+ */
+describe("StatTile", () => {
+  it("shows the label and value", () => {
+    render(<StatTile label="Overdue" value="8" icon={TriangleAlert} />);
+
+    expect(screen.getByText("Overdue")).toBeInTheDocument();
+    expect(screen.getByText("8")).toBeInTheDocument();
+  });
+
+  it("shows the hint when given one", () => {
+    render(
+      <StatTile
+        label="Overdue"
+        value="8"
+        icon={TriangleAlert}
+        hint="past due date now"
+      />
+    );
+
+    expect(screen.getByText("past due date now")).toBeInTheDocument();
+  });
+
+  it("renders no hint when none is given", () => {
+    const { container } = render(
+      <StatTile label="Overdue" value="8" icon={TriangleAlert} />
+    );
+
+    expect(container.querySelectorAll("p")).toHaveLength(2);
+  });
+
+  /**
+   * `value` is a string so a caller can render "—" for "not known yet"
+   * without this component inventing its own placeholder.
+   */
+  it("accepts a placeholder value as plain text", () => {
+    render(<StatTile label="Overdue" value="—" icon={TriangleAlert} />);
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("shows a skeleton instead of the value while loading", () => {
+    const { container } = render(
+      <StatTile label="Overdue" value="8" icon={TriangleAlert} isLoading />
+    );
+
+    expect(screen.queryByText("8")).not.toBeInTheDocument();
+    expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull();
+  });
+
+  it("hides the icon from assistive technology", () => {
+    const { container } = render(
+      <StatTile label="Overdue" value="8" icon={TriangleAlert} />
+    );
+    expect(container.querySelector("[aria-hidden]")).toBeInTheDocument();
+  });
+
+  /**
+   * Default stays `"end"` — the "Shift KPIs" widget's original placement,
+   * so `ShiftKpis.tsx` (the only other consumer) never moves under a prop it
+   * never passes.
+   */
+  it("places the icon after the text by default", () => {
+    const { container } = render(
+      <StatTile label="Overdue" value="8" icon={TriangleAlert} />
+    );
+    const content = container.querySelector('[data-slot="card-content"]');
+    const icon = container.querySelector("[aria-hidden]");
+    const text = screen.getByText("Overdue").closest("div");
+
+    expect([...(content?.children ?? [])].indexOf(text as Element)).toBe(0);
+    expect([...(content?.children ?? [])].indexOf(icon as Element)).toBe(1);
+  });
+
+  /** Trends' cards pass `"start"` to match the prototype's `trendTile`. */
+  it("places the icon before the text when iconPosition is start", () => {
+    const { container } = render(
+      <StatTile
+        label="Overdue"
+        value="8"
+        icon={TriangleAlert}
+        iconPosition="start"
+      />
+    );
+    const content = container.querySelector('[data-slot="card-content"]');
+    const icon = container.querySelector("[aria-hidden]");
+    const text = screen.getByText("Overdue").closest("div");
+
+    expect([...(content?.children ?? [])].indexOf(icon as Element)).toBe(0);
+    expect([...(content?.children ?? [])].indexOf(text as Element)).toBe(1);
+  });
+
+  /**
+   * Default stays `size-5` (20px) — every pre-existing caller's rendered
+   * size, unchanged unless a caller opts in.
+   */
+  it("sizes the icon at size-5 by default", () => {
+    const { container } = render(
+      <StatTile label="Overdue" value="8" icon={TriangleAlert} />
+    );
+    expect(container.querySelector("[aria-hidden]")).toHaveClass("size-5");
+  });
+
+  /**
+   * Trends' compliance tiles pass `size-4.25` (17px) to match `trendTile`'s
+   * `font-size:17` (`app-source.txt` 1896) — a caller-supplied override, not
+   * a second hardcoded default.
+   */
+  it("lets a caller override the icon size", () => {
+    const { container } = render(
+      <StatTile
+        label="Overdue"
+        value="8"
+        icon={TriangleAlert}
+        iconSize="size-4.25"
+      />
+    );
+    const icon = container.querySelector("[aria-hidden]");
+    expect(icon).toHaveClass("size-4.25");
+    expect(icon).not.toHaveClass("size-5");
+  });
+
+  /**
+   * Unset by default — the icon renders at lucide's own stroke width (2)
+   * unless a caller opts in, the same "no second hardcoded default" rule
+   * `iconSize` follows.
+   */
+  it("leaves the icon's stroke-width at the library default when unset", () => {
+    const { container } = render(
+      <StatTile label="Overdue" value="8" icon={TriangleAlert} />
+    );
+    expect(container.querySelector("[aria-hidden]")).not.toHaveAttribute(
+      "stroke-width",
+      "1.75"
+    );
+  });
+
+  /**
+   * Trends' `trendTile`-sourced tiles pass `1.75` — a first attempt at `2.25`
+   * read cluttered at 17-20px (`TrendsScreen.tsx`'s own docblock has the
+   * reasoning); this pins that the prop actually reaches the SVG.
+   */
+  it("lets a caller set the icon's stroke-width", () => {
+    const { container } = render(
+      <StatTile
+        label="Overdue"
+        value="8"
+        icon={TriangleAlert}
+        iconStrokeWidth={1.75}
+      />
+    );
+    expect(container.querySelector("[aria-hidden]")).toHaveAttribute(
+      "stroke-width",
+      "1.75"
+    );
   });
 });
 

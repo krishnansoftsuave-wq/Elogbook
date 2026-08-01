@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ROLE_PERMISSIONS } from "@/constants/permissions";
+import { ROLE_PERMISSIONS, type Permission } from "@/constants/permissions";
 import { ROLES, ROLE_VALUES } from "@/constants/roles";
 import { HOME_CANDIDATES, ROUTES } from "@/constants/routes";
 import {
@@ -9,7 +9,7 @@ import {
   isProtectedRoute,
   requiredPermissionsFor,
 } from "@/lib/auth/access";
-import { unionPermissions } from "@/lib/auth/permissions";
+import { hasPermission, unionPermissions } from "@/lib/auth/permissions";
 
 /** The real §6 permission list for a role, never a hand-typed subset. */
 const permissionsFor = (...roles: readonly (typeof ROLE_VALUES)[number][]) =>
@@ -46,6 +46,10 @@ describe("requiredPermissionsFor", () => {
       "shift:read",
       "assistant:query",
     ]);
+    expect(requiredPermissionsFor("/trends")).toEqual([
+      "shift:read",
+      "report:read",
+    ]);
     // FR-NOT-01 is "All roles", so nothing narrower than the group's own guard.
     expect(requiredPermissionsFor("/notifications")).toEqual(["shift:read"]);
   });
@@ -65,6 +69,7 @@ describe("requiredPermissionsFor", () => {
       "/summaries",
       "/actions",
       "/assistant",
+      "/trends",
       "/notifications",
     ]) {
       expect(requiredPermissionsFor(route)).toContain("shift:read");
@@ -102,6 +107,7 @@ describe("requiredPermissionsFor", () => {
     expect(requiredPermissionsFor("/administration")).toEqual([]);
     expect(requiredPermissionsFor("/logbooks")).toEqual([]);
     expect(requiredPermissionsFor("/actionsomething")).toEqual([]);
+    expect(requiredPermissionsFor("/trending")).toEqual([]);
   });
 });
 
@@ -266,6 +272,69 @@ describe("canAccess", () => {
     expect(canAccess(permissionsFor(ROLES.ADMINISTRATOR), "/assistant")).toBe(
       true
     );
+  });
+
+  /**
+   * §7.7's screen — **FR-AN-02**'s trend dashboard, gated on `report:read`.
+   *
+   * The three roles that reach it are Supervisor, Management and Administrator,
+   * which is the prototype's nav exactly: `SUPNAV` carries Trends & KPIs for
+   * every Supervisor variant, the four Superintendent roles and `admin` carry
+   * it, and the two navs without it are `operator` and `superuser`.
+   *
+   * Operator is excluded by the permission table rather than by choice — §6
+   * grants `report:read` to Supervisor and Management, and §6.1's Operator flow
+   * never mentions trends. Super User is excluded for the reason it is excluded
+   * everywhere in the operational tree: its permissions are configuration
+   * rights, and it holds no `shift:read` either.
+   */
+  it("opens /trends to supervisor, management and administrator only", () => {
+    for (const role of [
+      ROLES.SUPERVISOR,
+      ROLES.MANAGEMENT,
+      ROLES.ADMINISTRATOR,
+    ]) {
+      expect(canAccess(permissionsFor(role), ROUTES.TRENDS)).toBe(true);
+    }
+
+    for (const role of [ROLES.OPERATOR, ROLES.SUPER_USER]) {
+      expect(canAccess(permissionsFor(role), ROUTES.TRENDS)).toBe(false);
+    }
+  });
+
+  /**
+   * The reasoning behind the entry, pinned against the real §6 table rather
+   * than restated in a comment: `report:read` selects exactly the three roles
+   * above, and `analytics:read` — the alternative this entry deliberately does
+   * **not** use — is Management-only, so choosing it would have locked out the
+   * Supervisor whom §6.2 grants "Trend Reports / Trend Analysis" and FR-REP-01
+   * names for trend reports.
+   */
+  it("uses the permission that admits Supervisor, not the one that does not", () => {
+    const holders = (permission: Permission) =>
+      ROLE_VALUES.filter((role) =>
+        hasPermission(permissionsFor(role), [permission])
+      );
+
+    expect(holders("report:read")).toEqual([
+      ROLES.SUPERVISOR,
+      ROLES.MANAGEMENT,
+      ROLES.ADMINISTRATOR,
+    ]);
+    // §6.2 and FR-REP-01 both put trends in Supervisor's hands; this is why
+    // `analytics:read` is the wrong gate for this screen.
+    expect(holders("analytics:read")).not.toContain(ROLES.SUPERVISOR);
+  });
+
+  /**
+   * The effective-requirement rule on the newest entry. A custom role
+   * (**FR-ADM-02**) holding `report:read` alone passes the leaf policy but the
+   * `(user)` group guard above `/trends` demands `shift:read` — recording only
+   * the leaf would rebuild the infinite redirect `ACTIONS` documents.
+   */
+  it("refuses report:read alone, because the user group guard would", () => {
+    expect(canAccess(["report:read"], ROUTES.TRENDS)).toBe(false);
+    expect(canAccess(["report:read", "shift:read"], ROUTES.TRENDS)).toBe(true);
   });
 
   /**

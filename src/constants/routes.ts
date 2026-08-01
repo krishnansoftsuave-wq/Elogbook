@@ -77,6 +77,8 @@ export const ROUTES = {
   SUMMARY_DETAIL: (id: string) => `/summaries/${id}`,
   /** §7.4 — the bilingual AI assistant. */
   ASSISTANT: "/assistant",
+  /** §7.7 / FR-AN-02 — the trend dashboard. */
+  TRENDS: "/trends",
   /** §7.9 — in-app notifications. */
   NOTIFICATIONS: "/notifications",
   LOGBOOK: "/logbook",
@@ -292,6 +294,57 @@ export const ROUTE_PERMISSIONS = {
   ASSISTANT: {
     prefix: "/assistant",
     permissions: ["shift:read", "assistant:query"],
+  },
+  /**
+   * §7.7 — trends & KPIs (**FR-AN-02**), and the trend half of **FR-REP-01**.
+   *
+   * **`report:read`, not `analytics:read`.** `constants/permissions.ts` gives
+   * `report:read` to Supervisor and Management, and to the Administrator
+   * through the wildcard; Operator and Super User hold neither. That set is the
+   * prototype's nav exactly — `SUPNAV` (app-source.txt 3) carries
+   * `['trends','Trends & KPIs']` for all five Supervisor variants, all four
+   * Superintendent roles and `admin` carry it too, and the two navs without it
+   * are `operator` (5) and `superuser` (16).
+   *
+   * `analytics:read` is the tempting alternative and it is **wrong**: §6 grants
+   * it to Management alone, so it would lock every Supervisor out of a screen
+   * the BRD twice puts in their hands. §6.2, verbatim: "Supervisor access
+   * includes: Supervisor dashboard · Pending Actions · Shift Summary Report ·
+   * Ask Assistant · Notifications · Decision Workflow · **KPI Reports · Trend
+   * Reports / Trend Analysis**." **FR-REP-01** — "Generate operational and
+   * management reports — shift-summary, **trend**, pending-action,
+   * safety/compliance" — lists "Management, **Supervisor**" in its primary-role
+   * column, and v1.3's own changelog records v1.2 as having "expanded
+   * Supervisor access (**KPI & trend reports**, decision workflow)".
+   *
+   * That last point is the one worth stating plainly, because §7.7 reads the
+   * other way at a glance: FR-AN-01…06 all say "Management" under *Primary
+   * roles*. Primary is not exclusive — FR-REP-01 names both roles for the same
+   * artefact, and §6.2 names Supervisor in prose — so the column describes who
+   * the requirement was written for, not who may open the page. Gating on
+   * `analytics:read` would turn a soft column heading into a hard denial and
+   * contradict §6.2.
+   *
+   * `shift:read` rides along under the **effective-requirement rule** the
+   * `ACTIONS` entry documents: `/trends` sits in the `(user)` route group,
+   * whose layout guard demands `shift:read`, so entering it really needs both.
+   * An entry naming only the leaf would admit a custom role (**FR-ADM-02**)
+   * holding `report:read` alone and then have the group guard bounce it — the
+   * infinite redirect. Both roles that reach this screen hold `shift:read`
+   * anyway, so this costs nothing and closes the same hole.
+   *
+   * **PROVISIONAL**, on the same terms as every entry in this table and for a
+   * reason worth being explicit about: **the BRD does not say which permission
+   * gates this screen.** It never mentions a permission string at all — the
+   * `report:read` / `analytics:read` vocabulary is `authentication_flow.md`
+   * §6's, and §6 does not map either one to a route. What the BRD does give is
+   * *which roles* may see trends, and `report:read` is the only permission in
+   * §6 whose holders match that set. That is an inference from two documents,
+   * not a quoted requirement, and it needs client confirmation.
+   */
+  TRENDS: {
+    prefix: "/trends",
+    permissions: ["shift:read", "report:read"],
   },
   /**
    * §7.9 — notifications. **FR-NOT-01 is "All roles"**, so this is gated on

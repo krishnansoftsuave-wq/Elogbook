@@ -13,6 +13,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
+  TrendingUp,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -93,6 +94,13 @@ const NAV_ITEMS: readonly NavItem[] = [
     label: "Ask Assistant",
     icon: Bot,
     permissions: ROUTE_PERMISSIONS.ASSISTANT.permissions,
+  },
+  {
+    href: ROUTES.TRENDS,
+    module: "trends",
+    label: "Trends & KPIs",
+    icon: TrendingUp,
+    permissions: ROUTE_PERMISSIONS.TRENDS.permissions,
   },
   {
     href: ROUTES.NOTIFICATIONS,
