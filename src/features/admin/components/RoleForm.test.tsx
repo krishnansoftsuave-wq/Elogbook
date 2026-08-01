@@ -133,6 +133,59 @@ describe("RoleForm", () => {
   });
 
   /**
+   * Every `setValue` in this form passes `{ shouldValidate: true }`. Without
+   * it a programmatic write leaves a stale error on screen: RHF's default
+   * `mode: "onSubmit"` only revalidates a field on the next submit, so an
+   * `adGroup` error raised by a blocked submit would still be visible after
+   * the user supplied a group, with the submit button apparently doing
+   * nothing.
+   *
+   * Driven through the inline "New AD group name" input rather than the
+   * `<Select>` — same `setValue("adGroup", …)` write, and the portal control
+   * is not drivable here (see the note above).
+   */
+  it("clears the AD group error once a group is supplied after a failed submit", async () => {
+    const onSubmit = vi.fn();
+    renderWithProviders(
+      <RoleForm
+        defaultValues={{
+          name: "Safety Auditor",
+          permissions: EMPTY_MODULE_PERMISSIONS,
+          dataScope: "full_plant",
+          // Unlisted, so the inline input renders; empty would hide it.
+          adGroup: "ELOGBOOK_TEMP",
+        }}
+        existingAdGroups={EXISTING_AD_GROUPS}
+        submitLabel="Save & activate"
+        isSubmitting={false}
+        onSubmit={onSubmit}
+      />
+    );
+
+    const adGroupInput = screen.getByLabelText("New AD group name");
+    await userEvent.clear(adGroupInput);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save & activate" })
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Choose or create an AD group mapping")
+      ).toBeVisible()
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    await userEvent.type(adGroupInput, "ELOGBOOK_SAFETY_AUDITOR");
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText("Choose or create an AD group mapping")
+      ).not.toBeInTheDocument()
+    );
+  });
+
+  /**
    * §9.2's tension: the BRD names Area-Restricted as a selectable scope
    * (§9.1) but says data-level area filtering is "not required" (§9.2). The
    * form surfaces that rather than silently accepting the value.

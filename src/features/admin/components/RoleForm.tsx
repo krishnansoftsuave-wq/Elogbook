@@ -160,7 +160,8 @@ export const RoleForm = ({
                               onCheckedChange={(checked) =>
                                 setValue(
                                   `permissions.${module}.${action}`,
-                                  checked === true
+                                  checked === true,
+                                  { shouldValidate: true }
                                 )
                               }
                             />
@@ -182,7 +183,9 @@ export const RoleForm = ({
                       key={option}
                       type="button"
                       aria-pressed={dataScope === option}
-                      onClick={() => setValue("dataScope", option)}
+                      onClick={() =>
+                        setValue("dataScope", option, { shouldValidate: true })
+                      }
                       className={cn(
                         "px-3 py-1.5 text-sm transition-colors",
                         dataScope === option
@@ -220,11 +223,13 @@ export const RoleForm = ({
                       onValueChange={(value) => {
                         if (value === CREATE_AD_GROUP) {
                           setCreatingAdGroup(true);
-                          setValue("adGroup", "");
+                          setValue("adGroup", "", { shouldValidate: true });
                           return;
                         }
                         setCreatingAdGroup(false);
-                        setValue("adGroup", value ?? "");
+                        setValue("adGroup", value ?? "", {
+                          shouldValidate: true,
+                        });
                       }}
                     >
                       <SelectTrigger id="ad-group" className="w-full">
@@ -249,7 +254,9 @@ export const RoleForm = ({
                         aria-invalid={Boolean(errors.adGroup)}
                         value={adGroup}
                         onChange={(event) =>
-                          setValue("adGroup", event.target.value)
+                          setValue("adGroup", event.target.value, {
+                            shouldValidate: true,
+                          })
                         }
                         className="mt-2"
                       />

@@ -41,10 +41,7 @@ export const ROUTES = {
     ROLES: "/admin/roles",
     /**
      * `roleFormScreen` (`app-source.txt` 1613–1630) — permissions matrix, data
-     * scope and AD group mapping. Routed but not yet built: a stub page holds
-     * the place so the Roles list's New/Edit actions have somewhere real to
-     * send a click, per the same reasoning `ROUTES.ENTRY_ADD`/`ENTRY_EDIT`
-     * follow.
+     * scope and AD group mapping.
      */
     ROLE_ADD: "/admin/roles/add",
     ROLE_EDIT: (id: string) => `/admin/roles/${id}/edit`,

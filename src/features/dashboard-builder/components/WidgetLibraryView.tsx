@@ -136,7 +136,7 @@ export const WidgetLibraryView = ({ role }: WidgetLibraryViewProps) => {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[180px_1fr]">
         <div
-          role="tablist"
+          role="group"
           aria-label="Widget category"
           className="flex flex-row flex-wrap gap-1 rounded-lg border p-2 lg:flex-col"
         >
@@ -144,8 +144,7 @@ export const WidgetLibraryView = ({ role }: WidgetLibraryViewProps) => {
             <button
               key={option}
               type="button"
-              role="tab"
-              aria-selected={category === option}
+              aria-pressed={category === option}
               onClick={() => setCategory(option)}
               className={cn(
                 "rounded-md px-3 py-2 text-left text-sm font-medium",

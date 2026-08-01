@@ -67,6 +67,13 @@ export const useSaveDashboardDraft = () => {
       queryClient.invalidateQueries({
         queryKey: dashboardBuilderKeys.configs(),
       });
+      // `added` on a library entry is computed per-request against this
+      // dashboard's widget list, so adding or removing a widget invalidates
+      // the library too — otherwise the Widget Library keeps offering "Add"
+      // for a widget this save just added.
+      queryClient.invalidateQueries({
+        queryKey: dashboardBuilderKeys.library(config.role),
+      });
       toast.success("Draft saved");
     },
     onError: (error) => {
@@ -132,6 +139,12 @@ export const useRestoreDashboardVersion = () => {
       );
       queryClient.invalidateQueries({
         queryKey: dashboardBuilderKeys.configs(),
+      });
+      // A restore swaps the whole widget list for the snapshot's, so the
+      // library's per-widget `added` flags are stale for the same reason a
+      // draft save makes them stale.
+      queryClient.invalidateQueries({
+        queryKey: dashboardBuilderKeys.library(config.role),
       });
       toast.success(`Restored ${version}`);
     },

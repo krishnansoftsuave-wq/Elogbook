@@ -99,7 +99,7 @@ describe("WidgetLibraryView", () => {
     expect(screen.getByText("Critical Alarms Trend")).toBeVisible();
   });
 
-  it("filters widgets by category tab", async () => {
+  it("filters widgets by category chip", async () => {
     installMockApi({ permissions: SUPER_USER_PERMISSIONS });
     stubConfig();
     stubLibrary([
@@ -120,8 +120,12 @@ describe("WidgetLibraryView", () => {
     await screen.findByText("Critical Alarms Trend");
     expect(screen.getByText("Pending Actions")).toBeVisible();
 
-    await userEvent.click(screen.getByRole("tab", { name: "Charts" }));
+    const charts = screen.getByRole("button", { name: "Charts" });
+    expect(charts).toHaveAttribute("aria-pressed", "false");
 
+    await userEvent.click(charts);
+
+    expect(charts).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("Critical Alarms Trend")).toBeVisible();
     expect(screen.queryByText("Pending Actions")).not.toBeInTheDocument();
   });

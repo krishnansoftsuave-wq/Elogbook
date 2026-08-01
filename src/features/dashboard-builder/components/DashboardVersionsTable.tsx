@@ -71,7 +71,7 @@ export const DashboardVersionsTable = ({
           row.original.status === "live" ? (
             <History
               className="ml-auto size-4.5 text-muted-foreground"
-              aria-label="Currently live"
+              aria-hidden
             />
           ) : (
             <div className="flex justify-end">

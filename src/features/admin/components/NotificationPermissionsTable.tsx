@@ -105,11 +105,33 @@ export const NotificationPermissionsTable = () => {
     }));
   };
 
+  /**
+   * The draft is dropped on `onSettled`, not `onSuccess`, and that asymmetry
+   * is the point. `permissionsFor` prefers `draft[username]` over server
+   * state, so a draft left behind after a *failed* save keeps showing toggles
+   * the server rejected — the row would read as saved while the backend still
+   * holds the old values, on a control that decides who is told about an
+   * overdue safety action.
+   *
+   * Clearing on settle makes the row fall back to whatever the server
+   * actually holds in both directions: on success the mutation's own cache
+   * write has already landed the new values, so the fallback shows them; on
+   * failure it shows the unchanged server state, and the error toast explains
+   * why the toggles sprang back.
+   */
   const save = (row: NotificationPermission) => {
     setSavingUsername(row.username);
     updatePermission.mutate(
       { username: row.username, values: { permissions: permissionsFor(row) } },
-      { onSettled: () => setSavingUsername(null) }
+      {
+        onSettled: () => {
+          setSavingUsername(null);
+          setDraft((previous) => {
+            const { [row.username]: _cleared, ...rest } = previous;
+            return rest;
+          });
+        },
+      }
     );
   };
 
@@ -219,7 +241,6 @@ export const NotificationPermissionsTable = () => {
                           <TableCell key={key}>
                             <div className="flex justify-center gap-2">
                               <Switch
-                                size="sm"
                                 aria-label={`${row.displayName} — ${NOTIFICATION_PERMISSION_LABEL[key]}, in-app`}
                                 checked={permissions[key].in_app}
                                 disabled={isSaving}
@@ -228,7 +249,6 @@ export const NotificationPermissionsTable = () => {
                                 }
                               />
                               <Switch
-                                size="sm"
                                 aria-label={`${row.displayName} — ${NOTIFICATION_PERMISSION_LABEL[key]}, email`}
                                 checked={permissions[key].email}
                                 disabled={isSaving}

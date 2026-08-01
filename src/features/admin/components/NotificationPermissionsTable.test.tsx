@@ -163,6 +163,51 @@ describe("NotificationPermissionsTable", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
   });
 
+  /**
+   * A rejected save must not leave the row showing values the server refused.
+   * The draft is dropped on settle, so the toggle springs back to the server
+   * state rather than reading as saved — this row decides who is told about
+   * an overdue safety action, so a false "saved" is the dangerous direction.
+   */
+  it("reverts the toggle to server state when the save is rejected", async () => {
+    installMockApi({ permissions: ADMIN_PERMISSIONS });
+    stubRows();
+    mockRoute(
+      "PUT",
+      /\/admin\/notification-permissions\/said\.albusaidi$/,
+      () => ({
+        success: false,
+        error: {
+          code: "internal_error",
+          message: "Could not save notification permissions.",
+          details: null,
+        },
+        meta: { correlation_id: "test", timestamp: new Date(0).toISOString() },
+      }),
+      500
+    );
+
+    renderWithProviders(<NotificationPermissionsTable />);
+
+    // Seeded off; flipping it on is the change the server will reject.
+    const emailToggle = await screen.findByRole("switch", {
+      name: "Said Al-Busaidi — Action Assigned, email",
+    });
+    await userEvent.click(emailToggle);
+    expect(emailToggle).toBeChecked();
+
+    await userEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(
+        screen.getByRole("switch", {
+          name: "Said Al-Busaidi — Action Assigned, email",
+        })
+      ).not.toBeChecked()
+    );
+  });
+
   it("toasts on Export without calling the server", async () => {
     installMockApi({ permissions: ADMIN_PERMISSIONS });
     stubRows();

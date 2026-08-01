@@ -225,10 +225,18 @@ const VIEW_ONLY_PERMISSIONS: RoleWire["permissions"] = {
 
 /**
  * The Roles admin table (`app-source.txt` 1569), transcribed row for row: the
- * five base roles §6 defines, plus §6.1's Unit Manager and §6.6's HSSE
- * baseline (both real, `roleLabel`-covered roles with no `ROLES` constant or
- * AD group of their own yet — see `constants/roles.ts`), then the four
- * Administrator-created custom roles the prototype seeds.
+ * five base roles §6 defines, plus §6.1's Unit Manager and §6.6's Shutdown
+ * Coordinator and HSSE Officer baseline (all real, `roleLabel`-covered roles
+ * with no `ROLES` constant or AD group of their own yet — see
+ * `constants/roles.ts`), then the three Administrator-created custom roles the
+ * prototype seeds.
+ *
+ * **Shutdown Coordinator is `base`, not `custom`.** §6 line 161 says base
+ * roles "ship out of the box, including Unit Manager, Shutdown Coordinator and
+ * HSSE Officer", and §6.6 titles all three together as additional baseline
+ * roles. Seeding it `custom` made a BRD-mandated role deletable and its AD
+ * group editable (`api/v1/admin/roles/[id]/route.ts` :56, :92) — the two
+ * behaviours `type` actually governs.
  *
  * `member_count` is transcribed as the prototype's own number, not derived
  * from `MOCK_ACCOUNTS` — that directory seeds six identities total, nowhere
@@ -301,7 +309,7 @@ export const seedRoles = (): RoleWire[] => [
     name: "Shutdown Coordinator",
     member_count: 1,
     ad_group: "ELOGBOOK_SHUTDOWN",
-    type: "custom",
+    type: "base",
     permissions: VIEW_ONLY_PERMISSIONS,
     data_scope: "full_plant",
   },

@@ -36,10 +36,10 @@ const NO_PERMISSIONS = {
 };
 
 const role = (overrides: Record<string, unknown> = {}) => ({
-  id: "ROLE-0007",
-  name: "Shutdown Coordinator",
+  id: "ROLE-0008",
+  name: "Turnaround Lead",
   member_count: 1,
-  ad_group: "ELOGBOOK_SHUTDOWN",
+  ad_group: "ELOGBOOK_TA_LEAD",
   type: "custom",
   permissions: NO_PERMISSIONS,
   data_scope: "full_plant",
@@ -71,10 +71,10 @@ describe("RolesTable", () => {
     renderWithProviders(<RolesTable />);
 
     const row = await screen.findByRole("row", {
-      name: /Shutdown Coordinator/,
+      name: /Turnaround Lead/,
     });
     expect(within(row).getByText("1 user")).toBeVisible();
-    expect(within(row).getByText("ELOGBOOK_SHUTDOWN")).toBeVisible();
+    expect(within(row).getByText("ELOGBOOK_TA_LEAD")).toBeVisible();
     expect(within(row).getByText("Custom")).toBeVisible();
   });
 
@@ -96,10 +96,10 @@ describe("RolesTable", () => {
     renderWithProviders(<RolesTable />);
 
     expect(
-      await screen.findByRole("link", { name: "Edit Shutdown Coordinator" })
+      await screen.findByRole("link", { name: "Edit Turnaround Lead" })
     ).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "Delete Shutdown Coordinator" })
+      screen.getByRole("button", { name: "Delete Turnaround Lead" })
     ).toBeVisible();
   });
 
@@ -108,22 +108,22 @@ describe("RolesTable", () => {
     stubRoles();
 
     let deletes = 0;
-    mockRoute("DELETE", /\/admin\/roles\/ROLE-0007$/, () => {
+    mockRoute("DELETE", /\/admin\/roles\/ROLE-0008$/, () => {
       deletes += 1;
-      return envelope({ id: "ROLE-0007" });
+      return envelope({ id: "ROLE-0008" });
     });
 
     renderWithProviders(<RolesTable />);
 
     await userEvent.click(
       await screen.findByRole("button", {
-        name: "Delete Shutdown Coordinator",
+        name: "Delete Turnaround Lead",
       })
     );
 
     const dialog = await screen.findByRole("alertdialog");
     expect(
-      within(dialog).getByText(/Delete .*Shutdown Coordinator.*\?/)
+      within(dialog).getByText(/Delete .*Turnaround Lead.*\?/)
     ).toBeVisible();
 
     await userEvent.click(
@@ -140,14 +140,14 @@ describe("RolesTable", () => {
     let deletes = 0;
     mockRoute("DELETE", /\/admin\/roles\//, () => {
       deletes += 1;
-      return envelope({ id: "ROLE-0007" });
+      return envelope({ id: "ROLE-0008" });
     });
 
     renderWithProviders(<RolesTable />);
 
     await userEvent.click(
       await screen.findByRole("button", {
-        name: "Delete Shutdown Coordinator",
+        name: "Delete Turnaround Lead",
       })
     );
     await userEvent.click(

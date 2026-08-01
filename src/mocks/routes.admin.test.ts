@@ -961,15 +961,20 @@ describe("POST /admin/roles", () => {
 });
 
 describe("PUT /admin/roles/:id", () => {
+  /**
+   * ROLE-0008, Turnaround Lead — a genuinely Administrator-created custom
+   * role. Shutdown Coordinator (ROLE-0007) is a §6.6 baseline role and
+   * therefore `base`, so it cannot stand in for the custom-role write path.
+   */
   const UPDATE_BODY = {
-    name: "Shutdown Coordinator",
+    name: "Turnaround Lead",
     permissions: EMPTY_MODULE_PERMISSIONS,
     data_scope: "area_restricted",
-    ad_group: "ELOGBOOK_SHUTDOWN",
+    ad_group: "ELOGBOOK_TA_LEAD",
   } as const;
 
   it("updates a custom role and answers with the record it changed", async () => {
-    const response = await putRole("ROLE-0007", UPDATE_BODY, "admin");
+    const response = await putRole("ROLE-0008", UPDATE_BODY, "admin");
     const body = await response.json();
 
     expect(response.status).toBe(200);
@@ -977,10 +982,10 @@ describe("PUT /admin/roles/:id", () => {
   });
 
   it("leaves member_count and type untouched by the write", async () => {
-    await putRole("ROLE-0007", UPDATE_BODY, "admin");
+    await putRole("ROLE-0008", UPDATE_BODY, "admin");
 
     const role = mockStore().roles.find(
-      (candidate) => candidate.id === "ROLE-0007"
+      (candidate) => candidate.id === "ROLE-0008"
     );
     expect(role?.member_count).toBe(1);
     expect(role?.type).toBe("custom");
@@ -996,7 +1001,7 @@ describe("PUT /admin/roles/:id", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.data.name).toBe("Shutdown Coordinator");
+    expect(body.data.name).toBe("Turnaround Lead");
     expect(body.data.data_scope).toBe("area_restricted");
     expect(body.data.ad_group).toBe("ELOGBOOK_OPERATOR");
   });
@@ -1017,15 +1022,15 @@ describe("PUT /admin/roles/:id", () => {
   });
 
   it("refuses a Super User with a 403", async () => {
-    const response = await putRole("ROLE-0007", UPDATE_BODY, "superUser");
+    const response = await putRole("ROLE-0008", UPDATE_BODY, "superUser");
     expect(response.status).toBe(403);
   });
 
   it("writes an audit entry naming the updated role", async () => {
-    await putRole("ROLE-0007", UPDATE_BODY, "admin");
+    await putRole("ROLE-0008", UPDATE_BODY, "admin");
 
     expect(latestAudit()?.action).toBe("UPDATE_ROLE");
-    expect(latestAudit()?.target).toBe("Shutdown Coordinator");
+    expect(latestAudit()?.target).toBe("Turnaround Lead");
   });
 });
 
@@ -1044,9 +1049,23 @@ describe("DELETE /admin/roles/:id", () => {
     expect(body.error.code).toBe("conflict");
   });
 
-  /** ROLE-0007, Shutdown Coordinator, seeds with one member. */
-  it("409s a custom role that still has members", async () => {
+  /**
+   * ROLE-0007 is Shutdown Coordinator, a §6.6 baseline role — `base` for the
+   * same reason Unit Manager and HSSE Officer are, and so undeletable however
+   * few members it has. This complements the ROLE-0001 case above: the guard
+   * covers the §6.6 baseline roles, not just the five §6 names.
+   */
+  it("409s a §6.6 baseline role", async () => {
     const response = await deleteRole("ROLE-0007", "admin");
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error.code).toBe("conflict");
+  });
+
+  /** ROLE-0008, Turnaround Lead, seeds with one member. */
+  it("409s a custom role that still has members", async () => {
+    const response = await deleteRole("ROLE-0008", "admin");
     const body = await response.json();
 
     expect(response.status).toBe(409);
@@ -1055,33 +1074,33 @@ describe("DELETE /admin/roles/:id", () => {
 
   it("deletes a custom role with no members and answers 200", async () => {
     const role = mockStore().roles.find(
-      (candidate) => candidate.id === "ROLE-0007"
+      (candidate) => candidate.id === "ROLE-0008"
     );
     if (role) role.member_count = 0;
 
-    const response = await deleteRole("ROLE-0007", "admin");
+    const response = await deleteRole("ROLE-0008", "admin");
 
     expect(response.status).toBe(200);
     expect(
-      mockStore().roles.some((candidate) => candidate.id === "ROLE-0007")
+      mockStore().roles.some((candidate) => candidate.id === "ROLE-0008")
     ).toBe(false);
   });
 
   it("refuses a Super User with a 403", async () => {
-    const response = await deleteRole("ROLE-0007", "superUser");
+    const response = await deleteRole("ROLE-0008", "superUser");
     expect(response.status).toBe(403);
   });
 
   it("writes an audit entry naming the deleted role", async () => {
     const role = mockStore().roles.find(
-      (candidate) => candidate.id === "ROLE-0007"
+      (candidate) => candidate.id === "ROLE-0008"
     );
     if (role) role.member_count = 0;
 
-    await deleteRole("ROLE-0007", "admin");
+    await deleteRole("ROLE-0008", "admin");
 
     expect(latestAudit()?.action).toBe("DELETE_ROLE");
-    expect(latestAudit()?.target).toContain("Shutdown Coordinator");
+    expect(latestAudit()?.target).toContain("Turnaround Lead");
   });
 });
 

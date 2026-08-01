@@ -1,4 +1,4 @@
-import { ROLE_LABEL, type Role } from "@/constants/roles";
+import { roleLabel } from "@/constants/roles";
 import { mockRouteWithParams, notFound, okJson } from "@/mocks/handler";
 import { mockStore, patchById, recordAudit } from "@/mocks/store";
 
@@ -35,7 +35,7 @@ export const POST = mockRouteWithParams<{ role: string; versionId: string }>(
     recordAudit(
       session,
       "RESTORE_DASHBOARD_VERSION",
-      `${updated.name} (${ROLE_LABEL[updated.role as Role] ?? updated.role}) → ${version.version}`
+      `${updated.name} (${roleLabel(updated.role)}) → ${version.version}`
     );
 
     return okJson(updated);
