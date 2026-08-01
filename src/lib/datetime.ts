@@ -102,3 +102,34 @@ export const formatPlantTime = (iso: string): string => {
   if (Number.isNaN(parsed)) return "";
   return `${TIME.format(parsed)} ${PLANT_TIME_ZONE_LABEL}`;
 };
+
+/**
+ * An ISO instant → `10 min ago` / `2h ago` / `Yesterday` / `3 d ago`, relative
+ * to `at` — the prototype's notification timestamps (`app-source.txt` 78–81).
+ *
+ * `at` is a required, caller-supplied instant rather than an internal
+ * `new Date()`, the same rule `OverdueFlag` follows: a bare `new Date()` in a
+ * render body evaluates the server and client clocks separately, and two
+ * different "now"s can render two different strings for the same element,
+ * which React reports as a hydration mismatch. Callers pass `useNow()`.
+ *
+ * Beyond a week, "ago" stops being the useful answer and the actual date is,
+ * so this falls back to `formatPlantDateTime`. Empty string when unparseable.
+ */
+export const formatRelativeTime = (iso: string, at: Date): string => {
+  const parsed = Date.parse(iso);
+  if (Number.isNaN(parsed)) return "";
+
+  const diffMin = Math.round((at.getTime() - parsed) / 60_000);
+  if (diffMin < 1) return "Just now";
+  if (diffMin < 60) return `${diffMin} min ago`;
+
+  const diffHours = Math.round(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays} d ago`;
+
+  return formatPlantDateTime(iso);
+};

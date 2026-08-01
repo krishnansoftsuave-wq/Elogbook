@@ -1,5 +1,5 @@
 import { WILDCARD_PERMISSION } from "@/constants/permissions";
-import { matchesSearch, mockRoute, okJson, paginate } from "@/mocks/handler";
+import { mockRoute, okJson, paginate } from "@/mocks/handler";
 import { mockStore } from "@/mocks/store";
 
 /**
@@ -40,9 +40,9 @@ const plantDayOf = (occurredAt: string): string => {
  * Newest first: an audit log is read from the top.
  *
  * Filters mirror the prototype's three chips (`app-source.txt` 1650) — User,
- * Action, Date — plus a free-text search. `from` / `to` are **PROVISIONAL**
- * param names on the same terms as `/summaries`', and inclusive at both ends,
- * because a person picking the same date twice means "that day".
+ * Action, Date. `from` / `to` are **PROVISIONAL** param names on the same
+ * terms as `/summaries`', and inclusive at both ends, because a person
+ * picking the same date twice means "that day".
  */
 export const GET = mockRoute(
   { permission: WILDCARD_PERMISSION },
@@ -69,12 +69,7 @@ export const GET = mockRoute(
           if (to && day > to) return false;
         }
 
-        return matchesSearch(
-          searchParams.get("search"),
-          event.action,
-          event.target,
-          event.actor?.display_name ?? "System"
-        );
+        return true;
       })
       .slice()
       .reverse();

@@ -20,6 +20,7 @@ import {
   useNotificationTray,
 } from "@/features/notifications/api/queries";
 import { NotificationItem } from "@/features/notifications/components/NotificationItem";
+import { useNow } from "@/hooks/useNow";
 
 /**
  * The header bell — the prototype's tray (`app-source.txt` 191–210).
@@ -57,6 +58,7 @@ export const NotificationsTray = ({
   const open = controlledOpen ?? uncontrolledOpen;
   const setOpen = onOpenChange ?? setUncontrolledOpen;
   const { data, isLoading } = useNotificationTray();
+  const now = useNow();
 
   const unread = data?.unreadCount ?? 0;
   const items = data?.items ?? [];
@@ -112,6 +114,7 @@ export const NotificationsTray = ({
               <NotificationItem
                 key={notification.id}
                 notification={notification}
+                at={now}
                 onNavigate={() => setOpen(false)}
               />
             ))}

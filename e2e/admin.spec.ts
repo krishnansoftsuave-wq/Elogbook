@@ -557,12 +557,13 @@ test.describe("audit log", () => {
 
     await openAt(page, "/admin/audit");
     /*
-      Found by searching, not by scanning page one. Every sign-in this suite
+      Found by filtering, not by scanning page one. Every sign-in this suite
       performs writes its own LOGIN row, so by the time this runs the refusal is
       several pages deep — which is the log working, not a thing to design
       around.
     */
-    await page.getByLabel("Search the audit log").fill("Hamed");
+    await page.getByLabel("Filter by user").click();
+    await page.getByRole("option", { name: "Hamed Al-Siyabi" }).click();
 
     const row = page.getByRole("row", { name: /Hamed Al-Siyabi/ }).first();
     await expect(row).toBeVisible(FIRST_PAINT);

@@ -15,6 +15,7 @@ import { GET as auditGET } from "@/app/api/v1/audit/route";
 import { POST as decisionsPOST } from "@/app/api/v1/decisions/route";
 import { GET as notificationsGET } from "@/app/api/v1/notifications/route";
 import { POST as notificationReadPOST } from "@/app/api/v1/notifications/[id]/read/route";
+import { POST as notificationReadAllPOST } from "@/app/api/v1/notifications/read-all/route";
 import { GET as suggestionsGET } from "@/app/api/v1/suggestions/route";
 import { POST as suggestionConfirmPOST } from "@/app/api/v1/suggestions/[id]/confirm/route";
 import {
@@ -844,6 +845,64 @@ describe("notifications — FR-NOT-01", () => {
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
     expect((await second.json()).data.read).toBe(true);
+  });
+
+  /**
+   * The replacement for looping `POST /:id/read` once per unread row
+   * (NFR-12: N separate writes can half-fail; one write cannot). Scoped to
+   * the caller the same way the single-notification endpoint is — marking
+   * the Operator's inbox read must not touch the Supervisor's.
+   */
+  it("marks every one of the caller's unread notifications in one write, scoped to the caller", async () => {
+    const operatorBefore = await (
+      await get(notificationsGET, "/notifications?unread=true", "operator")
+    ).json();
+    const unreadCountBefore = operatorBefore.data.total;
+    expect(unreadCountBefore).toBeGreaterThan(0);
+
+    const supervisorBefore = await (
+      await get(notificationsGET, "/notifications?unread=true", "supervisor")
+    ).json();
+    expect(supervisorBefore.data.total).toBeGreaterThan(0);
+
+    const response = await post(
+      notificationReadAllPOST,
+      "/notifications/read-all",
+      {},
+      "operator"
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.markedCount).toBe(unreadCountBefore);
+
+    const operatorAfter = await (
+      await get(notificationsGET, "/notifications?unread=true", "operator")
+    ).json();
+    expect(operatorAfter.data.total).toBe(0);
+
+    // Untouched: this was the Operator's inbox, not the whole store.
+    const supervisorAfter = await (
+      await get(notificationsGET, "/notifications?unread=true", "supervisor")
+    ).json();
+    expect(supervisorAfter.data.total).toBe(supervisorBefore.data.total);
+  });
+
+  it("marking all read twice is a no-op the second time", async () => {
+    await post(
+      notificationReadAllPOST,
+      "/notifications/read-all",
+      {},
+      "operator"
+    );
+    const second = await post(
+      notificationReadAllPOST,
+      "/notifications/read-all",
+      {},
+      "operator"
+    );
+
+    expect((await second.json()).data.markedCount).toBe(0);
   });
 });
 
