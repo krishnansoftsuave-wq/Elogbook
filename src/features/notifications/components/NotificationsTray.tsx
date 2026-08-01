@@ -38,8 +38,24 @@ import { NotificationItem } from "@/features/notifications/components/Notificati
  * whole screen in Phase 1c the moment its menu opened; `Header.tsx` carries the
  * same note.
  */
-export const NotificationsTray = () => {
-  const [open, setOpen] = useState(false);
+interface NotificationsTrayProps {
+  /**
+   * Optionally controlled, so `Header` can keep this and the sub-type pill
+   * mutually exclusive — the prototype closes each when the other opens
+   * (`app-source.txt` 231, 249). Left uncontrolled the tray owns its own state,
+   * which is what every existing caller and test relies on.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export const NotificationsTray = ({
+  open: controlledOpen,
+  onOpenChange,
+}: NotificationsTrayProps = {}) => {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
   const { data, isLoading } = useNotificationTray();
 
   const unread = data?.unreadCount ?? 0;

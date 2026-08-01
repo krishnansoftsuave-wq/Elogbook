@@ -26,17 +26,49 @@ describe("authStore", () => {
   it("holds the token and nothing that came from GET /me", () => {
     useAuthStore.getState().setSession("token-1", EXPIRES_IN);
 
-    // Exact, not a subset: the point of this lane is that `user`, `roles`,
-    // `permissions` and `areaScope` are owned by TanStack Query and can never
-    // appear here.
+    /*
+      Exact, not a subset: the point of this lane is that `user`, `roles`,
+      `permissions` and `areaScope` are owned by TanStack Query and can never
+      appear here.
+
+      `impersonation` is the one deliberate addition, and it is not a
+      counter-example. It holds no `GET /me` field — only which role an
+      administrator has chosen to *view as*, which no endpoint knows and no
+      refetch could restore. AGENTS.md's ownership table assigns impersonation
+      to Zustand by name.
+    */
     expect(Object.keys(useAuthStore.getState()).sort()).toEqual([
       "clearAuth",
       "expiresAt",
       "hasHydrated",
+      "impersonation",
       "setHasHydrated",
+      "setImpersonation",
       "setSession",
       "token",
     ]);
+  });
+
+  it("drops an impersonation when a new session begins", () => {
+    useAuthStore
+      .getState()
+      .setImpersonation({ role: "supervisor", subCategory: "utility" });
+
+    useAuthStore.getState().setSession("token-2", EXPIRES_IN);
+
+    // A new token is a new person: whoever the last one was pretending to be
+    // must not survive into their session.
+    expect(useAuthStore.getState().impersonation).toBeNull();
+  });
+
+  it("drops an impersonation on sign-out", () => {
+    useAuthStore
+      .getState()
+      .setImpersonation({ role: "management", subCategory: "process" });
+
+    useAuthStore.getState().clearAuth();
+
+    expect(useAuthStore.getState().impersonation).toBeNull();
   });
 
   it("records the token and the expiry ceiling expires_in describes", () => {

@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { LogOut, Monitor, Moon, Sun } from "lucide-react";
 
 import { BrandMark } from "@/components/layout/BrandMark";
+import { HeaderSearch } from "@/components/layout/HeaderSearch";
+import { SubTypePill } from "@/components/layout/SubTypePill";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,8 +70,11 @@ const ON_BRAND_CONTROL =
  * The prototype's application top bar (`app-source.txt` 191–212): a 58px teal
  * band carrying the logo tile, the product name and the account controls.
  *
- * The prototype's global search field (196) is deliberately absent — there is no
- * search endpoint behind it.
+ * The prototype's global search field (196) is here as `HeaderSearch`, which
+ * explains what it searches: the prototype's own is an inert `<span>`, and the
+ * BRD has no keyword-search requirement, so it submits to the assistant —
+ * BO-02's "searchable in plain English" — rather than to an endpoint that does
+ * not exist.
  *
  * **The role switcher is not here either, and the reason has changed.** The
  * prototype's `typeControl` (198) is a free switcher in the top bar; the
@@ -82,7 +88,10 @@ const ON_BRAND_CONTROL =
  * The theme control is this repo's, not the prototype's: the prototype has no
  * dark mode at all, and the code quality standard requires one.
  */
+type TopBarMenu = "subtype" | "notifications";
+
 export const Header = () => {
+  const [openMenu, setOpenMenu] = useState<TopBarMenu | null>(null);
   const { session } = useSession();
   const theme = useSettingsStore((state) => state.theme);
   const setTheme = useSettingsStore((state) => state.setTheme);
@@ -92,20 +101,44 @@ export const Header = () => {
     <header className="sticky top-0 z-40 flex h-[3.625rem] shrink-0 items-center justify-between gap-4 bg-brand-surface px-5 text-on-brand">
       <Link
         href={ROUTES.HOME}
-        className="flex items-center gap-2.5 rounded-md text-[0.96875rem] font-semibold whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-on-brand focus-visible:ring-offset-2 focus-visible:ring-offset-brand-surface"
+        className="flex shrink-0 items-center gap-2.5 rounded-md text-[0.96875rem] font-semibold whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-on-brand focus-visible:ring-offset-2 focus-visible:ring-offset-brand-surface"
       >
         <BrandMark size="md" onBrand />
-        {BRAND_NAME}
+        {/*
+          Visually hidden below `md` so the search field keeps a usable width at
+          375 — the name is the one thing here that is pure decoration once the
+          mark is visible. `sr-only` rather than unmounted, so the link keeps its
+          accessible name at every breakpoint (NFR-08).
+        */}
+        <span className="max-md:sr-only">{BRAND_NAME}</span>
       </Link>
 
-      <div className="flex items-center gap-2">
+      <HeaderSearch />
+
+      <div className="flex shrink-0 items-center gap-2">
         {/*
           FR-NOT-01 in the shell rather than on a screen: a notification about an
           overdue action is only useful if it reaches somebody who is looking at
           something else. Rendered only for a signed-in session, because the tray
           fetches on mount and the sign-in surface has no session to fetch for.
         */}
-        {session ? <NotificationsTray /> : null}
+        {/*
+          Order is the prototype's: type pill, bell, avatar (`app-source.txt`
+          198–211). The two menus are mutually exclusive there — opening either
+          closes the other (231, 249) — which is why their open state is lifted
+          here rather than owned by each.
+        */}
+        <SubTypePill
+          open={openMenu === "subtype"}
+          onOpenChange={(next) => setOpenMenu(next ? "subtype" : null)}
+        />
+
+        {session ? (
+          <NotificationsTray
+            open={openMenu === "notifications"}
+            onOpenChange={(next) => setOpenMenu(next ? "notifications" : null)}
+          />
+        ) : null}
 
         <DropdownMenu>
           <DropdownMenuTrigger

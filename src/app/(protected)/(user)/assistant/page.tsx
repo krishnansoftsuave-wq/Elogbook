@@ -17,14 +17,30 @@ export const metadata: Metadata = { title: "Ask Assistant" };
  * **The answer itself is [BACKEND]** — an on-premises LLM doing RAG over the
  * curated layer. What runs here is the contract.
  */
-export default function AssistantPage() {
+interface AssistantPageProps {
+  /**
+   * `?q=` is how the top bar's search field hands a question over
+   * (`components/layout/HeaderSearch.tsx`). A Promise in Next 16 — see
+   * `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/page.md`.
+   */
+  searchParams: Promise<{ q?: string | string[] }>;
+}
+
+export default async function AssistantPage({
+  searchParams,
+}: AssistantPageProps) {
+  const { q } = await searchParams;
+  // A repeated `?q=a&q=b` arrives as an array. Only the single-value form is a
+  // question; anything else is discarded rather than guessed at.
+  const initialQuestion = typeof q === "string" ? q : "";
+
   return (
     <>
       <PageHeader
         title="Ask Assistant"
         description="Query the logbook in English or Arabic — answers come back in the language you ask, with their sources cited."
       />
-      <AssistantChat />
+      <AssistantChat initialQuestion={initialQuestion} />
     </>
   );
 }

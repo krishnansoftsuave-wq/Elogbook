@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { signInAs } from "./accounts";
+
 /**
  * The Supervisor's own surface, end to end — §6.2, FR-PA-01/02/03/05, FR-NOT-01.
  *
@@ -12,7 +14,6 @@ import { expect, test, type Page } from "@playwright/test";
  * starts by default.
  */
 
-const SSO_BUTTON = "Sign in with Oman LNG Account";
 const OPERATOR = "Said Al-Busaidi";
 /** Holds `action:confirm` and `action:assign`; the Operator holds neither. */
 const SUPERVISOR = "Fatma Al-Harthy";
@@ -24,11 +25,13 @@ const BREAKPOINTS = [
   { name: "desktop", width: 1440, height: 900 },
 ] as const;
 
-const signIn = async (page: Page, displayName = SUPERVISOR) => {
-  await page.goto("/auth/login");
-  await page.getByRole("button", { name: SSO_BUTTON }).click();
-  await page.getByRole("button", { name: new RegExp(displayName) }).click();
-};
+/**
+ * `e2e/accounts.ts` explains why this drives the callback rather than the
+ * sidebar switcher — most notably that the switcher does not exist below `lg`,
+ * where the `responsive` block runs. `e2e/auth.spec.ts` owns the sign-in chain.
+ */
+const signIn = (page: Page, displayName = SUPERVISOR) =>
+  signInAs(page, displayName);
 
 const landOn = (page: Page, pattern: RegExp) =>
   page.waitForURL(pattern, { timeout: 30_000 });

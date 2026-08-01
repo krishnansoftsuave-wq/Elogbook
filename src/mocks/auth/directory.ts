@@ -69,12 +69,21 @@ export const MOCK_ACCOUNTS: readonly MockAccount[] = [
  *
  * The mock AD FS account picker is gone — the button goes straight to the
  * callback, which is where real AD FS lands the browser once somebody has
- * authenticated. One identity has to be the default, and the Operator has the
- * fullest operational surface: dashboard, actions, summaries, assistant and
- * notifications all open for it. `DevRoleSwitcher` in the sidebar footer is how
- * you become anybody else.
+ * authenticated. One identity has to be the default.
+ *
+ * **It is the Administrator, and that is a stub-mode decision only.** The
+ * sidebar `RoleSwitcher` and the top-bar `SubTypePill` are admin impersonation,
+ * gated on the wildcard, so an Operator default left both controls invisible on
+ * arrival with no click-path to an account that could see them — the account
+ * picker that used to provide one is gone. Landing as the Administrator makes
+ * every one of the twelve role variants reachable from the first screen, which
+ * is what a stub sign-in is for.
+ *
+ * Nothing downstream depends on it: the button is the *only* reader, real AD FS
+ * decides who signs in at cutover (tracker A-01), and every other account is
+ * still reachable at `/auth/callback?account=<username>`.
  */
-export const DEFAULT_MOCK_ACCOUNT = "said.albusaidi";
+export const DEFAULT_MOCK_ACCOUNT = "noura.alkindi";
 
 export const findMockAccount = (username: string): MockAccount | undefined =>
   MOCK_ACCOUNTS.find((account) => account.username === username);

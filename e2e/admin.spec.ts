@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { signInAs } from "./accounts";
+
 /**
  * The Administrator's surface, end to end — **FR-ADM-01** (the directory) and
  * §6.4 (the four workflow switches).
@@ -13,7 +15,6 @@ import { expect, test, type Page } from "@playwright/test";
  * starts by default.
  */
 
-const SSO_BUTTON = "Sign in with Oman LNG Account";
 const ADMINISTRATOR = "Noura Al-Kindi";
 /** §6.5 — dashboards, metrics, and comment / decision-workflow access. */
 const SUPER_USER = "Yousuf Al-Rawahi";
@@ -28,11 +29,13 @@ const BREAKPOINTS = [
 
 const FIRST_PAINT = { timeout: 30_000 } as const;
 
-const signIn = async (page: Page, displayName = ADMINISTRATOR) => {
-  await page.goto("/auth/login");
-  await page.getByRole("button", { name: SSO_BUTTON }).click();
-  await page.getByRole("button", { name: new RegExp(displayName) }).click();
-};
+/**
+ * `e2e/accounts.ts` explains why this drives the callback rather than the
+ * sidebar switcher — most notably that the switcher does not exist below `lg`,
+ * where the `responsive` block runs. `e2e/auth.spec.ts` owns the sign-in chain.
+ */
+const signIn = (page: Page, displayName = ADMINISTRATOR) =>
+  signInAs(page, displayName);
 
 const landOn = (page: Page, pattern: RegExp) =>
   page.waitForURL(pattern, { timeout: 30_000 });
@@ -538,11 +541,7 @@ test.describe("audit log", () => {
    * opens an audit log to find.
    */
   test("a refused sign-in leaves a failure row", async ({ page }) => {
-    await page.goto("/auth/login");
-    await page.getByRole("button", { name: SSO_BUTTON }).click();
-    await page
-      .getByRole("button", { name: new RegExp("Hamed Al-Siyabi") })
-      .click();
+    await signIn(page, "Hamed Al-Siyabi");
 
     /*
       Wait for the refusal to actually land. `CallbackExchange` defers the

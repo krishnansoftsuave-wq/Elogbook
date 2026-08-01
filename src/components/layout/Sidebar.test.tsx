@@ -26,13 +26,13 @@ vi.mock("next/navigation", () => ({
 
 const realAdapter = api.defaults.adapter;
 
-const meEnvelope = (permissions: readonly string[]) => ({
+const meEnvelope = (permissions: readonly string[], roles: string[]) => ({
   success: true,
   data: {
     subject: "dev|said.albusaidi",
     username: "said.albusaidi",
     display_name: "Said Al Busaidi",
-    roles: ["operator"],
+    roles,
     groups: ["OLNG-ELOG-OPERATORS"],
     permissions,
     area_scope: null,
@@ -56,8 +56,14 @@ const respondWith =
     return response;
   };
 
-const signInWith = (permissions: readonly string[]) => {
-  api.defaults.adapter = respondWith(meEnvelope(permissions));
+/**
+ * `roles` is now load-bearing, not decoration. The nav is filtered by permission
+ * *and* by the role's module set (`ROLE_MODULES`), so a fixture pairing
+ * administrator permissions with `roles: ["operator"]` describes a session that
+ * cannot exist — and would correctly be shown the Operator's five modules.
+ */
+const signInWith = (permissions: readonly string[], roles = ["operator"]) => {
+  api.defaults.adapter = respondWith(meEnvelope(permissions, roles));
   useAuthStore.setState({
     token: "token-1",
     expiresAt: Date.now() + 60_000,
@@ -91,7 +97,7 @@ describe("Sidebar", () => {
   });
 
   it("shows only the user directory to a session holding user:read", async () => {
-    signInWith(["dashboard:configure", "user:read"]);
+    signInWith(["dashboard:configure", "user:read"], ["super_user"]);
 
     renderWithProviders(<Sidebar />);
 
@@ -103,15 +109,38 @@ describe("Sidebar", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows everything to the administrator wildcard", async () => {
-    signInWith(["*"]);
+  /**
+   * The wildcard opens every *route*; the role's module set still shapes the
+   * *menu*. `ROLE_MODULES.administrator` is dashboard · admin · audit · trends ·
+   * reports · notifications — no pending actions, which is the prototype's own
+   * admin nav (`app-source.txt` 15). So this is not "everything": it is
+   * everything an Administrator's nav carries.
+   */
+  it("shows the administrator their own modules, not every route", async () => {
+    signInWith(["*"], ["administrator"]);
+
+    renderWithProviders(<Sidebar />);
+
+    expect(
+      await screen.findByRole("link", { name: "Users" })
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Audit log" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Pending actions" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows an operator the operational modules and no admin ones", async () => {
+    signInWith(["*"], ["operator"]);
 
     renderWithProviders(<Sidebar />);
 
     expect(
       await screen.findByRole("link", { name: "Pending actions" })
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Users" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Users" })
+    ).not.toBeInTheDocument();
   });
 
   it("shows nothing at all before a session exists", () => {
@@ -147,17 +176,15 @@ describe("Sidebar", () => {
     // leaving `title` as the only accname source — the last-resort one, which
     // no major browser surfaces to a keyboard user. The label must survive as
     // real text, visually hidden.
-    signInWith(["*"]);
+    signInWith(["*"], ["administrator"]);
     useSettingsStore.setState({ sidebarCollapsed: true });
 
     renderWithProviders(<Sidebar />);
 
-    const actions = await screen.findByRole("link", {
-      name: "Pending actions",
-    });
-    expect(actions).toHaveTextContent("Pending actions");
-    expect(screen.getByRole("link", { name: "Users" })).toHaveTextContent(
-      "Users"
+    const users = await screen.findByRole("link", { name: "Users" });
+    expect(users).toHaveTextContent("Users");
+    expect(screen.getByRole("link", { name: "Audit log" })).toHaveTextContent(
+      "Audit log"
     );
   });
 

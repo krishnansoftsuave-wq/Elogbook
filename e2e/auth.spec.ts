@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { signInAs as accountSignIn } from "./accounts";
+
 /**
  * The sign-in chain, end to end: `/auth/login` → `/auth/callback` → the route
  * the session's permissions actually open.
@@ -22,8 +24,15 @@ import { expect, test, type Page } from "@playwright/test";
 
 const SSO_BUTTON = "Sign in with Oman LNG Account";
 
-/** Who the sign-in button signs you in as; mirrors `DEFAULT_MOCK_ACCOUNT`. */
-const DEFAULT_ACCOUNT = "Said Al-Busaidi";
+/**
+ * Who the sign-in button signs you in as; mirrors `DEFAULT_MOCK_ACCOUNT`.
+ *
+ * The Administrator, so the gated impersonation controls are reachable from the
+ * first screen — see the constant's own note. Every other account here arrives
+ * through `e2e/accounts.ts` instead, which is the same exchange without the
+ * button.
+ */
+const DEFAULT_ACCOUNT = "Noura Al-Kindi";
 
 /** §5's refusal, verbatim — the same paragraph `ACCESS_DENIED_MESSAGE` holds. */
 const DENY_MESSAGE =
@@ -33,41 +42,39 @@ const DENY_MESSAGE =
 const BASE_ORIGIN = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 
 /**
- * Walks the whole redirect chain the way a person would.
- *
- * The button always signs in as the Operator, so becoming anybody else is a
- * second step through the sidebar switcher — which is exactly what a person
- * does now. `signIn` alone covers the default; `switchTo` covers the rest.
+ * Walks the whole redirect chain the way a person would: the button signs in as
+ * the Operator and nobody else.
  */
 const signIn = async (page: Page, from = "/auth/login") => {
   await page.goto(from);
   await page.getByRole("button", { name: SSO_BUTTON }).click();
 };
 
-/** The dev-only role switcher at the foot of the sidebar. */
-const switchTo = async (page: Page, displayName: string) => {
-  await page.getByRole("button", { name: /Switch role/ }).click();
-  await page
-    .getByRole("menuitemradio", { name: new RegExp(displayName) })
-    .click();
-};
-
 /**
- * Sign in, then become somebody else. Waits for the default landing first:
- * the switcher lives in the sidebar, so it does not exist until the Operator's
- * session has actually rendered a protected screen.
+ * Sign in as a specific AD account.
+ *
+ * ⚠️ **Changed with the two-tier role switcher.** The sidebar footer used to
+ * hold a dev-only *account* picker, and this walked it. That control is gone:
+ * what sits there now is the product's **role impersonation** switcher, which
+ * changes the role a session is viewed as, not which AD user is signed in. The
+ * two are different things and only the second one needs a different token.
+ *
+ * So becoming a different account is the callback drive `e2e/accounts.ts`
+ * already uses — the same exchange, minus a UI step that no longer exists.
+ * `from` is preserved for the `returnTo` cases, which still walk the login
+ * screen.
  */
 const signInAs = async (
   page: Page,
   displayName: string,
   from = "/auth/login"
 ) => {
-  await signIn(page, from);
+  if (displayName === DEFAULT_ACCOUNT) {
+    await signIn(page, from);
+    return;
+  }
 
-  if (displayName === DEFAULT_ACCOUNT) return;
-
-  await page.waitForURL(/\/dashboard$/, { timeout: 30_000 });
-  await switchTo(page, displayName);
+  await accountSignIn(page, displayName);
 };
 
 const horizontalOverflow = (page: Page) =>
@@ -236,7 +243,11 @@ test.describe("authentication", () => {
     await signInAs(page, "Maryam Al-Zadjali");
 
     await page.waitForURL(/\/dashboard$/, { timeout: 30_000 });
-    // The header prints the session's roles, joined — the union, not one of them.
+
+    // The account menu prints the session's roles, joined — the union, not one
+    // of them. Opened explicitly now: the roles used to be legible from the
+    // sidebar account picker, which the role switcher replaced.
+    await page.getByRole("button", { name: "Account menu" }).click();
     await expect(page.getByText(/Operator.*Management/)).toBeVisible();
   });
 
@@ -246,32 +257,52 @@ test.describe("authentication", () => {
    * to an Administrator's permissions in the other direction, so this is the
    * assertion that `homeForSession` is doing the routing.
    */
-  test("switching role lands on the new role's home, not a bounce", async ({
-    page,
-  }) => {
-    await signIn(page);
-    await page.waitForURL(/\/dashboard$/, { timeout: 30_000 });
-
-    await switchTo(page, "Yousuf Al-Rawahi");
+  test("a session lands on its own home, not a bounce", async ({ page }) => {
+    await signInAs(page, "Yousuf Al-Rawahi");
 
     // Super User holds `user:read` and no operational permission at all, so
-    // `/dashboard` is not reachable and `/admin/users` is the only home.
+    // `/dashboard` is not reachable and `/admin/users` is the only home. This
+    // is the assertion that `homeForSession` does the routing.
     await page.waitForURL(/\/admin\/users$/, { timeout: 30_000 });
   });
 
-  test("the switcher announces which identity is current", async ({ page }) => {
-    await signIn(page);
-    await page.waitForURL(/\/dashboard$/, { timeout: 30_000 });
+  /**
+   * The sidebar switcher is now **role impersonation**, gated on the wildcard,
+   * so it is the Administrator who sees it — and it lists the five role groups,
+   * not AD accounts. Account switching moved to the callback drive; see
+   * `signInAs` above.
+   */
+  test("the role switcher announces which role is current", async ({
+    page,
+  }) => {
+    await signInAs(page, "Noura Al-Kindi");
+    await page.waitForURL(/\/admin\/users$/, { timeout: 30_000 });
 
     await page.getByRole("button", { name: /Switch role/ }).click();
 
     // A checked state a screen reader can read, not just a tick glyph.
     await expect(
-      page.getByRole("menuitemradio", { name: /Said Al-Busaidi/ })
+      page.getByRole("menuitemradio", { name: /Administration/ })
     ).toHaveAttribute("aria-checked", "true");
     await expect(
-      page.getByRole("menuitemradio", { name: /Noura Al-Kindi/ })
+      page.getByRole("menuitemradio", { name: /Operator/ })
     ).toHaveAttribute("aria-checked", "false");
+  });
+
+  test("an Operator is not offered the role switcher", async ({ page }) => {
+    // Explicitly the Operator: the button signs in as the Administrator now.
+    await signInAs(page, "Said Al-Busaidi");
+    await page.waitForURL(/\/dashboard$/, { timeout: 30_000 });
+
+    // Positive control first — the rail has rendered before absence is asserted.
+    await expect(
+      page.getByRole("navigation", { name: "Main" }).getByRole("link", {
+        name: "Dashboard",
+      })
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: /Switch role/ })).toHaveCount(
+      0
+    );
   });
 
   test("a 401 from /me is refused on screen, not left spinning", async ({
@@ -460,8 +491,10 @@ test.describe("responsive sign-in surface", () => {
       page,
     }) => {
       await page.setViewportSize(breakpoint);
-      await signIn(page);
-      await page.waitForURL(/\/dashboard$/, { timeout: 30_000 });
+      // The switcher is admin impersonation, so it is the Administrator who has
+      // one at all.
+      await signInAs(page, "Noura Al-Kindi");
+      await page.waitForURL(/\/admin\/users$/, { timeout: 30_000 });
 
       const trigger = page.getByRole("button", { name: /Switch role/ });
       if (breakpoint.width >= 1024) {
@@ -469,7 +502,7 @@ test.describe("responsive sign-in surface", () => {
         await trigger.click();
         // The upward menu at this width, with no page scroll behind it.
         await expect(
-          page.getByRole("menuitemradio", { name: /Noura Al-Kindi/ })
+          page.getByRole("menuitemradio", { name: /Supervisor/ })
         ).toBeVisible();
       } else {
         await expect(trigger).toHaveCount(0);

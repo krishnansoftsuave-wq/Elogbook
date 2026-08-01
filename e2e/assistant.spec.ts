@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { signInAs } from "./accounts";
+
 /**
  * The bilingual assistant, end to end — §7.4.
  *
@@ -12,7 +14,6 @@ import { expect, test, type Page } from "@playwright/test";
  * `playwright.config.ts` starts it by default.
  */
 
-const SSO_BUTTON = "Sign in with Oman LNG Account";
 const OPERATOR = "Said Al-Busaidi";
 /** Holds `user:read` and nothing operational — the 403 fixture. */
 const SUPER_USER = "Yousuf Al-Rawahi";
@@ -23,11 +24,13 @@ const BREAKPOINTS = [
   { name: "desktop", width: 1440, height: 900 },
 ] as const;
 
-const signIn = async (page: Page, displayName = OPERATOR) => {
-  await page.goto("/auth/login");
-  await page.getByRole("button", { name: SSO_BUTTON }).click();
-  await page.getByRole("button", { name: new RegExp(displayName) }).click();
-};
+/**
+ * `e2e/accounts.ts` explains why this drives the callback rather than the
+ * sidebar switcher — most notably that the switcher does not exist below `lg`,
+ * where the `responsive` block runs. `e2e/auth.spec.ts` owns the sign-in chain.
+ */
+const signIn = (page: Page, displayName = OPERATOR) =>
+  signInAs(page, displayName);
 
 const landOn = (page: Page, pattern: RegExp) =>
   page.waitForURL(pattern, { timeout: 30_000 });
@@ -204,6 +207,42 @@ test.describe("ask assistant", () => {
     });
     await expect(mic).toBeVisible(FIRST_PAINT);
     await expect(mic).toBeDisabled();
+  });
+
+  /* ---- the top bar's search field ---------------------------------------- */
+
+  /**
+   * **BO-02** — "Make operational history instantly searchable in plain English
+   * and Arabic, with traceable sources." There is no keyword-search endpoint in
+   * the contract and no search FR; what delivers BO-02 is the assistant, so the
+   * prototype's top-bar field (`app-source.txt` 196, an inert `<span>` there)
+   * submits to it. This drives that whole path from a screen that is not the
+   * assistant.
+   */
+  test("the top bar search asks the assistant from another screen", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await landOn(page, /\/dashboard$/);
+
+    const search = page.getByLabel("Search the logbook");
+    await expect(search).toBeVisible(FIRST_PAINT);
+    await search.fill("What happened on B-train?");
+    await search.press("Enter");
+
+    await landOn(page, /\/assistant\?q=/);
+    // The question is asked on arrival, not merely pre-filled.
+    await expect(page.getByText("Sources")).toBeVisible(FIRST_PAINT);
+  });
+
+  test("a Super User is not offered the search field", async ({ page }) => {
+    await signIn(page, SUPER_USER);
+    await landOn(page, /\/admin\/users/);
+
+    // Positive control first, for the reason the nav test below spells out: an
+    // absence assertion alone passes before the client shell has hydrated.
+    await expect(page.getByLabel("Search users")).toBeVisible(FIRST_PAINT);
+    await expect(page.getByLabel("Search the logbook")).toHaveCount(0);
   });
 
   /* ---- FR-ADM-03: the guard, not the hidden link, is the control --------- */

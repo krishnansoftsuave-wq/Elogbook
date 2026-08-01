@@ -540,4 +540,66 @@ describe("AssistantChat", () => {
     });
     expect(mic).toBeDisabled();
   });
+
+  /* ---- seeded from the top bar's search field ---------------------------- */
+
+  /**
+   * `/assistant?q=…` is how `components/layout/HeaderSearch.tsx` hands a
+   * question over. The page awaits `searchParams` and passes it down, so by the
+   * time this component sees it there is no URL parsing left to do.
+   */
+  describe("seeded from ?q=", () => {
+    it("asks the question the top bar handed over", async () => {
+      stubQuery();
+
+      renderWithProviders(<AssistantChat initialQuestion="compressor trip" />);
+
+      await waitFor(() => expect(lastQuery.question).toBe("compressor trip"));
+      expect(screen.getByText("compressor trip")).toBeVisible();
+    });
+
+    it("stays empty when no question came with the navigation", () => {
+      stubQuery();
+
+      renderWithProviders(<AssistantChat initialQuestion="   " />);
+
+      expect(screen.getByText("No questions yet")).toBeVisible();
+      expect(lastQuery.question).toBeUndefined();
+    });
+
+    /**
+     * Searching again from the assistant screen re-renders the route in place
+     * rather than remounting, so a "have I run" boolean would latch after the
+     * first question and silently drop every one after it. The guard is the seed
+     * value, which is what makes this pass.
+     */
+    it("asks again when a different question arrives", async () => {
+      stubQuery();
+
+      const { rerender } = renderWithProviders(
+        <AssistantChat initialQuestion="compressor trip" />
+      );
+      await waitFor(() => expect(lastQuery.question).toBe("compressor trip"));
+
+      rerender(<AssistantChat initialQuestion="relief valve" />);
+
+      await waitFor(() => expect(lastQuery.question).toBe("relief valve"));
+      expect(screen.getByText("compressor trip")).toBeVisible();
+    });
+
+    it("does not re-ask the same question on a re-render", async () => {
+      stubQuery();
+
+      const { rerender } = renderWithProviders(
+        <AssistantChat initialQuestion="compressor trip" />
+      );
+      await waitFor(() => expect(lastQuery.question).toBe("compressor trip"));
+
+      rerender(<AssistantChat initialQuestion="compressor trip" />);
+
+      await waitFor(() =>
+        expect(screen.getAllByText("compressor trip")).toHaveLength(1)
+      );
+    });
+  });
 });

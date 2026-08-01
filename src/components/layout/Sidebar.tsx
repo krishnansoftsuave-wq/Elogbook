@@ -20,7 +20,10 @@ import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Permission } from "@/constants/permissions";
 import { ROUTE_PERMISSIONS, ROUTES } from "@/constants/routes";
-import { DevRoleSwitcher } from "@/features/auth/components/DevRoleSwitcher";
+import { RoleSwitcher } from "@/components/layout/RoleSwitcher";
+import { modulesFor } from "@/constants/subCategories";
+import { useIsWorkflowEnabled } from "@/features/admin/api/queries";
+import { useRoleVariant } from "@/features/auth/hooks/useRoleVariant";
 import { useSession } from "@/features/auth/hooks/useSession";
 import { hasPermission } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
@@ -32,6 +35,11 @@ interface NavItem {
   icon: LucideIcon;
   /** ALL of these are required for the item to appear. */
   permissions: readonly Permission[];
+  /**
+   * The prototype module this row belongs to (`ROLE_MODULES`). Several rows can
+   * share one: the prototype's single `admin` module is three screens here.
+   */
+  module: string;
 }
 
 /**
@@ -54,24 +62,28 @@ interface NavItem {
 const NAV_ITEMS: readonly NavItem[] = [
   {
     href: ROUTES.DASHBOARD,
+    module: "dashboard",
     label: "Dashboard",
     icon: LayoutDashboard,
     permissions: ROUTE_PERMISSIONS.DASHBOARD.permissions,
   },
   {
     href: ROUTES.ACTIONS,
+    module: "pending",
     label: "Pending actions",
     icon: ListChecks,
     permissions: ROUTE_PERMISSIONS.ACTIONS.permissions,
   },
   {
     href: ROUTES.SUMMARIES,
+    module: "summary",
     label: "Shift summaries",
     icon: FileText,
     permissions: ROUTE_PERMISSIONS.SUMMARIES.permissions,
   },
   {
     href: ROUTES.ASSISTANT,
+    module: "assistant",
     // The prototype's own label (`app-source.txt` SUPNAV line 3).
     label: "Ask Assistant",
     icon: Bot,
@@ -79,18 +91,21 @@ const NAV_ITEMS: readonly NavItem[] = [
   },
   {
     href: ROUTES.NOTIFICATIONS,
+    module: "notifications",
     label: "Notifications",
     icon: Bell,
     permissions: ROUTE_PERMISSIONS.NOTIFICATIONS.permissions,
   },
   {
     href: ROUTES.ADMIN.USERS,
+    module: "admin",
     label: "Users",
     icon: Users,
     permissions: ROUTE_PERMISSIONS.ADMIN.permissions,
   },
   {
     href: ROUTES.ADMIN.WORKFLOWS,
+    module: "admin",
     label: "Workflows",
     icon: SlidersHorizontal,
     // `access:control`, which both admin-tree roles hold — §6.5 gives the Super
@@ -100,6 +115,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   },
   {
     href: ROUTES.ADMIN.SHIFT_CONFIG,
+    module: "admin",
     label: "Shift timings",
     icon: Clock,
     permissions: ROUTE_PERMISSIONS.ADMIN_SHIFT_CONFIG.permissions,
@@ -108,6 +124,7 @@ const NAV_ITEMS: readonly NavItem[] = [
     // The prototype gives Audit Log its own top-level nav row rather than an
     // admin tab (`app-source.txt` 15–16), and so does this.
     href: ROUTES.ADMIN.AUDIT,
+    module: "audit",
     label: "Audit log",
     icon: History,
     permissions: ROUTE_PERMISSIONS.ADMIN_AUDIT.permissions,
@@ -117,11 +134,33 @@ const NAV_ITEMS: readonly NavItem[] = [
 export const Sidebar = () => {
   const pathname = usePathname();
   const { permissions } = useSession();
+  const { role, actualRole, isImpersonating } = useRoleVariant();
+  const workflowEnabled = useIsWorkflowEnabled("management_decision_workflow");
   const collapsed = useSettingsStore((state) => state.sidebarCollapsed);
   const toggleSidebar = useSettingsStore((state) => state.toggleSidebar);
 
-  const items = NAV_ITEMS.filter((item) =>
-    hasPermission(permissions, item.permissions)
+  /*
+    Two filters, composed, and the order matters.
+
+    Permission first, unchanged: it reuses each route's own `ROUTE_PERMISSIONS`
+    entry so the menu and the guard cannot drift, and it is what keeps a §6
+    custom role from smuggling a row in.
+
+    Then the role's module set (`ROLE_MODULES`), which is what gives the
+    prototype's five nav sets. It is skipped entirely when this build cannot
+    name the session's role — a custom role has no module list, and filtering by
+    an empty one would blank the nav rather than fall back to permissions.
+
+    Modules with no route here (`trends`, `reports`, `dashboards`, `decisions`)
+    simply match no item, so the splice below can never produce a dead link.
+  */
+  const modules = modulesFor(role, workflowEnabled);
+  const roleKnown = actualRole !== null || isImpersonating;
+
+  const items = NAV_ITEMS.filter(
+    (item) =>
+      hasPermission(permissions, item.permissions) &&
+      (!roleKnown || modules.includes(item.module))
   );
 
   return (
@@ -202,21 +241,16 @@ export const Sidebar = () => {
       </nav>
 
       {/*
-        The prototype's `roleControl()` sits at the foot of the rail
-        (`app-source.txt` 221–222, 246). **Dev-only scaffolding**, not the
-        product's role switcher — that one is admin impersonation behind a
-        permission gate and is still unbuilt.
+        The prototype's `roleControl()` at the foot of the rail
+        (`app-source.txt` 221–222, 246–260).
 
-        The guard is repeated here rather than left to the component's own early
-        return, and that repetition is the point: `process.env.NODE_ENV` is a
-        build-time literal, so in a production bundle this reads
-        `"production" !== "production"`, the JSX is dead, `DevRoleSwitcher`
-        becomes an unused binding, and the module is dropped from the bundle
-        instead of shipped as a component that returns null.
+        This is now the **product** control — admin impersonation behind a
+        permission gate — rather than the dev-only account picker that stood
+        here before. It renders itself only for a session that may impersonate,
+        so no `NODE_ENV` fold is needed or wanted: the capability is real and
+        ships, gated.
       */}
-      {process.env.NODE_ENV !== "production" && (
-        <DevRoleSwitcher collapsed={collapsed} />
-      )}
+      <RoleSwitcher collapsed={collapsed} />
     </aside>
   );
 };

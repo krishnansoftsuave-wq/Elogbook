@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { signInAs } from "./accounts";
+
 /**
  * The Operator's pending-actions path, end to end — §7.6.
  *
@@ -14,8 +16,6 @@ import { expect, test, type Page } from "@playwright/test";
  * design (`src/mocks/http.ts`).
  */
 
-const SSO_BUTTON = "Sign in with Oman LNG Account";
-
 /** The Operator fixture — one AD group, one role (`mocks/auth/directory.ts`). */
 const OPERATOR = "Said Al-Busaidi";
 
@@ -25,11 +25,14 @@ const BREAKPOINTS = [
   { name: "desktop", width: 1440, height: 900 },
 ] as const;
 
-const signIn = async (page: Page, displayName = OPERATOR) => {
-  await page.goto("/auth/login");
-  await page.getByRole("button", { name: SSO_BUTTON }).click();
-  await page.getByRole("button", { name: new RegExp(displayName) }).click();
-};
+/**
+ * `e2e/accounts.ts` explains why this drives the callback rather than the
+ * sidebar switcher: the switcher does not exist below `lg`, and the
+ * `responsive` block below runs at 375 and 768. `e2e/auth.spec.ts` owns the
+ * sign-in chain itself.
+ */
+const signIn = (page: Page, displayName = OPERATOR) =>
+  signInAs(page, displayName);
 
 /**
  * Waits for a landing route with headroom for Next's dev server, which compiles

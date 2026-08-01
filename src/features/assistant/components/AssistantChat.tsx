@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, TriangleAlert } from "lucide-react";
 
 import { EmptyState } from "@/components/EmptyState";
@@ -64,7 +64,15 @@ const toQueryValues = (question: string, filters: AssistantFilters) => ({
   ...(filters.dateTo ? { date_to: filters.dateTo } : {}),
 });
 
-export const AssistantChat = () => {
+interface AssistantChatProps {
+  /**
+   * Seeded from `/assistant?q=…`, which is how the top bar's search field hands
+   * its question over. Empty on a normal visit.
+   */
+  initialQuestion?: string;
+}
+
+export const AssistantChat = ({ initialQuestion = "" }: AssistantChatProps) => {
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [filters, setFilters] = useState<AssistantFilters>(INITIAL_FILTERS);
   const ask = useAskAssistant();
@@ -76,10 +84,12 @@ export const AssistantChat = () => {
     zero is identical in both.
   */
   const nextKey = useRef(0);
-  const takeKey = () => {
+  // Memoized only so `submit` below can be, which the seeding effect depends on.
+  // A ref's identity never changes, so the empty dependency list is honest.
+  const takeKey = useCallback(() => {
     nextKey.current += 1;
     return `turn-${nextKey.current}`;
-  };
+  }, []);
 
   const setFilter = useCallback(
     <TKey extends keyof AssistantFilters>(
@@ -91,48 +101,75 @@ export const AssistantChat = () => {
     []
   );
 
-  const submit = (question: string) => {
-    /*
+  const submit = useCallback(
+    (question: string) => {
+      /*
       Both ids are taken *before* the updater runs. `takeKey` mutates a ref, and
       a state updater must be pure: `reactStrictMode` double-invokes it in
       development and React's eager-state path can invoke it again, so a
       `takeKey()` called inside would advance the counter more than once per
       question and hand the same entry a different key on a replay.
     */
-    const questionId = takeKey();
-    const pendingId = takeKey();
+      const questionId = takeKey();
+      const pendingId = takeKey();
 
-    setTranscript((current) => [
-      ...current,
-      { kind: "question", id: questionId, text: question },
-      { kind: "pending", id: pendingId },
-    ]);
+      setTranscript((current) => [
+        ...current,
+        { kind: "question", id: questionId, text: question },
+        { kind: "pending", id: pendingId },
+      ]);
 
-    ask.mutate(toQueryValues(question, filters), {
-      onSuccess: (answer) => {
-        setTranscript((current) =>
-          current.map((entry) =>
-            entry.id === pendingId
-              ? { kind: "answer", id: pendingId, answer }
-              : entry
-          )
-        );
-      },
-      onError: (error) => {
-        setTranscript((current) =>
-          current.map((entry) =>
-            entry.id === pendingId
-              ? {
-                  kind: "error",
-                  id: pendingId,
-                  message: getErrorMessage(error),
-                }
-              : entry
-          )
-        );
-      },
-    });
-  };
+      ask.mutate(toQueryValues(question, filters), {
+        onSuccess: (answer) => {
+          setTranscript((current) =>
+            current.map((entry) =>
+              entry.id === pendingId
+                ? { kind: "answer", id: pendingId, answer }
+                : entry
+            )
+          );
+        },
+        onError: (error) => {
+          setTranscript((current) =>
+            current.map((entry) =>
+              entry.id === pendingId
+                ? {
+                    kind: "error",
+                    id: pendingId,
+                    message: getErrorMessage(error),
+                  }
+                : entry
+            )
+          );
+        },
+      });
+    },
+    [ask, filters, takeKey]
+  );
+
+  /*
+    Ask the question the top bar handed over.
+
+    This is not the `useEffect` + fetch the architecture rules ban — there is no
+    query here to hand to TanStack Query. It reacts to a *navigation*: a URL
+    arrived carrying a question, and the one-shot POST that answers it is a
+    mutation, which has no declarative trigger.
+
+    The guard is the seed itself rather than a "has run" boolean. Search again
+    from the assistant screen and the route re-renders in place without
+    remounting, so a boolean would latch and the second question would silently
+    do nothing. Keyed this way, a new question asks and the same question does
+    not ask twice — which also absorbs StrictMode's double invocation.
+  */
+  const lastSeed = useRef<string | null>(null);
+
+  useEffect(() => {
+    const seed = initialQuestion.trim();
+    if (!seed || lastSeed.current === seed) return;
+
+    lastSeed.current = seed;
+    submit(seed);
+  }, [initialQuestion, submit]);
 
   return (
     <div className="flex flex-col gap-4">

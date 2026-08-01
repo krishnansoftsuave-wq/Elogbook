@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { signInAs } from "./accounts";
+
 /**
  * The Operator's dashboard and shift-summary path, end to end — §7.2 and §7.5.
  *
@@ -10,8 +12,6 @@ import { expect, test, type Page } from "@playwright/test";
  * starts it by default. Against a production build these correctly fail to sign
  * in, because `/dev/token` 404s there by design (`src/mocks/http.ts`).
  */
-
-const SSO_BUTTON = "Sign in with Oman LNG Account";
 
 /** The Operator fixture — one AD group, one role (`mocks/auth/directory.ts`). */
 const OPERATOR = "Said Al-Busaidi";
@@ -26,11 +26,13 @@ const BREAKPOINTS = [
   { name: "desktop", width: 1440, height: 900 },
 ] as const;
 
-const signIn = async (page: Page, displayName = OPERATOR) => {
-  await page.goto("/auth/login");
-  await page.getByRole("button", { name: SSO_BUTTON }).click();
-  await page.getByRole("button", { name: new RegExp(displayName) }).click();
-};
+/**
+ * `e2e/accounts.ts` explains why this drives the callback rather than the
+ * sidebar switcher — most notably that the switcher does not exist below `lg`,
+ * where the `responsive` block runs. `e2e/auth.spec.ts` owns the sign-in chain.
+ */
+const signIn = (page: Page, displayName = OPERATOR) =>
+  signInAs(page, displayName);
 
 /**
  * Waits for a landing route with headroom for Next's dev server, which compiles
@@ -163,9 +165,16 @@ test.describe("operations dashboard", () => {
   }) => {
     await signIn(page);
     await landOn(page, /\/dashboard$/);
-    await expect(page.getByText("Pending actions by status")).toBeVisible(
-      FIRST_PAINT
-    );
+    /*
+      By role, not by text. That label is on the chart *and* on the `<caption>`
+      of its table equivalent, so an unscoped `getByText` is two elements and
+      strict mode refuses it — but only once the data has arrived, which made
+      this a race that passed whenever the assertion won. The chart is what the
+      absent toggle would belong to, so the chart is what to wait for.
+    */
+    await expect(
+      page.getByRole("img", { name: "Pending actions by status" })
+    ).toBeVisible(FIRST_PAINT);
 
     await expect(page.getByRole("group", { name: /Chart type/ })).toHaveCount(
       0
