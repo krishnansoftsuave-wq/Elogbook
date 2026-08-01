@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 
 import { PageHeader } from "@/components/layout/PageHeader";
-import { AuditTable } from "@/features/audit/components/AuditTable";
+import {
+  AuditTable,
+  ExportAuditButton,
+} from "@/features/audit/components/AuditTable";
 
 export const metadata: Metadata = { title: "Audit log" };
 
@@ -12,14 +15,17 @@ export const metadata: Metadata = { title: "Audit log" };
  * on the other end to read it. Click through the product and come back here:
  * the log fills up, which is the demonstration this screen exists to give.
  *
- * Title and subtitle are the prototype's own (`app-source.txt` 1646).
+ * Title and subtitle are the prototype's own, verbatim (`app-source.txt`
+ * 1646: `pageHead('Audit Log','Immutable record of system and user
+ * activity',...)`).
  */
 export default function AdminAuditPage() {
   return (
     <>
       <PageHeader
-        title="Audit log"
-        description="Immutable record of system and user activity. Entries are appended by the platform and can never be edited or removed."
+        title="Audit Log"
+        description="Immutable record of system and user activity"
+        actions={<ExportAuditButton />}
       />
       <AuditTable />
     </>

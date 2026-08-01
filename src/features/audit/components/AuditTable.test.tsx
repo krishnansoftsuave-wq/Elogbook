@@ -1,8 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { toast } from "sonner";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AuditTable } from "@/features/audit/components/AuditTable";
+import {
+  AuditTable,
+  ExportAuditButton,
+} from "@/features/audit/components/AuditTable";
 import {
   installMockApi,
   mockRoute,
@@ -10,6 +14,18 @@ import {
   resetMockApi,
 } from "@/test/mockApi";
 import { renderWithProviders } from "@/test/utils";
+
+/*
+  Mocked at the module boundary, same as `NotificationsList.test.tsx` —
+  asserted here rather than by counting rendered toasts, because
+  `renderWithProviders` mounts no `<Toaster/>` to count.
+*/
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 const ADMIN_PERMISSIONS = ["*"];
 
@@ -173,7 +189,11 @@ describe("AuditTable", () => {
     renderWithProviders(<AuditTable />);
     await screen.findByRole("row", { name: /Said Al-Busaidi/ });
 
-    const from = screen.getByLabelText("From");
+    // The two date fields live behind the single "Date" chip.
+    await userEvent.click(
+      screen.getByRole("button", { name: "Filter by date" })
+    );
+    const from = await screen.findByLabelText("From");
     await userEvent.type(from, "2026-07-30");
 
     await waitFor(() => expect(params?.from).toBe("2026-07-30"));
@@ -217,24 +237,20 @@ describe("AuditTable", () => {
       await screen.findByText("No activity matches these filters.")
     ).toBeVisible();
   });
+});
 
+describe("ExportAuditButton", () => {
   /**
-   * FR-REP-06 — "Record every report export in the audit trail" — is real, and
-   * no export endpoint exists in this build. The prototype's Export button
-   * fires a toast; shipping it would claim something the platform cannot do.
+   * The prototype's header "Export" (`app-source.txt` 1648) only ever fired a
+   * toast — there is still no export endpoint in this build, so this button
+   * does the same thing rather than nothing. FR-REP-06 stays reported unmet;
+   * this is UI parity with the prototype, not a claim that exporting works.
    */
-  it("offers no Export control", async () => {
-    installMockApi({ permissions: ADMIN_PERMISSIONS });
-    stubDirectory();
-    stubAudit();
+  it("toasts on click rather than exporting anything real", async () => {
+    renderWithProviders(<ExportAuditButton />);
 
-    renderWithProviders(<AuditTable />);
-    // Positive control: the table rendered, so the absence below means
-    // something.
-    await screen.findByRole("row", { name: /Said Al-Busaidi/ });
+    await userEvent.click(screen.getByRole("button", { name: "Export" }));
 
-    expect(
-      screen.queryByRole("button", { name: /export/i })
-    ).not.toBeInTheDocument();
+    expect(toast.success).toHaveBeenCalledWith("Audit log exported");
   });
 });
