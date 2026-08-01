@@ -117,6 +117,9 @@ export const API_ENDPOINTS = {
     NOTIFICATION_PERMISSIONS: "/admin/notification-permissions",
     NOTIFICATION_PERMISSION: (username: string) =>
       `/admin/notification-permissions/${username}`,
+    /** §6 / FR-ADM-02 — base roles plus Administrator-created custom roles. */
+    ROLES: "/admin/roles",
+    ROLE: (id: string) => `/admin/roles/${id}`,
   },
 
   /** §7.11 / §9.3 — append-only. There is deliberately no update or delete. */
@@ -128,6 +131,22 @@ export const API_ENDPOINTS = {
   DASHBOARDS: {
     WIDGETS: "/dashboards/widgets",
     WIDGET: (id: string) => `/dashboards/widgets/${id}`,
+  },
+
+  /**
+   * ⚠️ PROTOTYPE-ONLY — no BRD basis, unlike `DASHBOARDS` above. The
+   * prototype's `dashboards()` list/builder/library/preview/publish flow
+   * (`app-source.txt` 2045–2192), built at the user's explicit request
+   * (2026-08-01). See `features/dashboard-builder/schemas.ts`.
+   */
+  DASHBOARD_BUILDER: {
+    CONFIGS: "/dashboard-builder/configs",
+    CONFIG: (role: string) => `/dashboard-builder/configs/${role}`,
+    PUBLISH: (role: string) => `/dashboard-builder/configs/${role}/publish`,
+    VERSIONS: (role: string) => `/dashboard-builder/configs/${role}/versions`,
+    RESTORE: (role: string, versionId: string) =>
+      `/dashboard-builder/configs/${role}/versions/${versionId}/restore`,
+    LIBRARY: (role: string) => `/dashboard-builder/library?role=${role}`,
   },
 } as const;
 

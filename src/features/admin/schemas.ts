@@ -170,32 +170,6 @@ export const shiftConfigUpdateSchema = shiftConfigWireSchema;
 /** Twelve hours, in minutes — the length FR-HOME-03 fixes a shift at. */
 const SHIFT_MINUTES = 12 * 60;
 
-/**
- * **Two fields are editable; the other three follow.**
- *
- * FR-HOME-03 defines a shift as *"a 12-hour period"*, so once the day shift's
- * start is known, its end and both night boundaries are arithmetic. The
- * prototype (`app-source.txt` 2016) draws four independently editable free-text
- * time inputs — the named deviation, because independent boundaries would permit
- * `day 06:00–14:00, night 20:00–04:00`, a shape the requirement does not
- * describe and the shift arithmetic cannot represent.
- *
- * The wire object keeps all five fields. The form derives three of them on
- * submit, so the contract is unchanged and only the *editing* is narrowed.
- */
-export const shiftTimingsFormSchema = z.object({
-  dayStart: clockTimeSchema,
-  overlapMinutes: z
-    .number({ message: "Enter a whole number of minutes." })
-    .int("Enter a whole number of minutes.")
-    .nonnegative("An overlap cannot be negative.")
-    // Derived, not invented: a handover cannot be longer than the shift it
-    // hands over. FR-HOME-03's own example is 15 minutes.
-    .max(SHIFT_MINUTES, "A handover cannot be longer than the shift itself."),
-});
-
-export type ShiftTimingsFormValues = z.infer<typeof shiftTimingsFormSchema>;
-
 /** `"06:00"` → `360`; anything unparseable → `null`. */
 const minutesOfDay = (clockTime: string): number | null => {
   const match = CLOCK_TIME.exec(clockTime);
@@ -204,33 +178,84 @@ const minutesOfDay = (clockTime: string): number | null => {
   return Number(hours) * 60 + Number(minutes);
 };
 
-const clockTimeOf = (minutes: number): string => {
-  const wrapped = ((minutes % 1440) + 1440) % 1440;
-  const hours = Math.floor(wrapped / 60);
-  return `${String(hours).padStart(2, "0")}:${String(wrapped % 60).padStart(2, "0")}`;
-};
+/** Minutes from `from` to `to`, going forward and wrapping past midnight. */
+const minutesForward = (from: number, to: number): number =>
+  ((to - from) % 1440) + (to < from ? 1440 : 0);
 
 /**
- * The full five-field wire object from the two the form owns.
+ * **All four boundaries are independently editable, matching the prototype's
+ * literal layout (`app-source.txt` 1662–1674).** A prior revision derived
+ * three of them from the start time; the owner chose the prototype's editable
+ * four-field form instead.
  *
- * Shared by the form's preview and its submit so the read-only fields on screen
- * are, provably, the values that get sent — a second implementation of "add
- * twelve hours" is how the preview and the payload drift apart.
+ * FR-HOME-03 still defines a shift as *"a 12-hour period"*, and that is not
+ * negotiable just because the fields moved — an independently-set
+ * `day 06:00–14:00, night 20:00–04:00` is a shape the requirement does not
+ * describe. So the same constraint that used to be enforced *by construction*
+ * (deriving the other three) is now enforced *by validation*: submission is
+ * refused unless `day_end - day_start` and `night_end - night_start` are both
+ * exactly twelve hours, and the night boundary continues from the day
+ * boundary with no gap or overlap.
  */
-export const deriveShiftConfig = (
-  values: ShiftTimingsFormValues
-): ShiftConfigWire => {
-  const startMinutes = minutesOfDay(values.dayStart) ?? 0;
-  const nightStart = clockTimeOf(startMinutes + SHIFT_MINUTES);
+export const shiftTimingsFormSchema = z
+  .object({
+    dayStart: clockTimeSchema,
+    dayEnd: clockTimeSchema,
+    nightStart: clockTimeSchema,
+    nightEnd: clockTimeSchema,
+    overlapMinutes: z
+      .number({ message: "Enter a whole number of minutes." })
+      .int("Enter a whole number of minutes.")
+      .nonnegative("An overlap cannot be negative.")
+      // A handover cannot be longer than the shift it hands over.
+      // FR-HOME-03's own example is 15 minutes.
+      .max(SHIFT_MINUTES, "A handover cannot be longer than the shift itself."),
+  })
+  .refine(
+    (values) => {
+      const dayStart = minutesOfDay(values.dayStart);
+      const dayEnd = minutesOfDay(values.dayEnd);
+      if (dayStart === null || dayEnd === null) return true;
+      return minutesForward(dayStart, dayEnd) === SHIFT_MINUTES;
+    },
+    {
+      message: "Day shift must run exactly twelve hours (FR-HOME-03).",
+      path: ["dayEnd"],
+    }
+  )
+  .refine((values) => values.dayEnd === values.nightStart, {
+    message: "Night shift must start where the day shift ends.",
+    path: ["nightStart"],
+  })
+  .refine(
+    (values) => {
+      const nightStart = minutesOfDay(values.nightStart);
+      const nightEnd = minutesOfDay(values.nightEnd);
+      if (nightStart === null || nightEnd === null) return true;
+      return minutesForward(nightStart, nightEnd) === SHIFT_MINUTES;
+    },
+    {
+      message: "Night shift must run exactly twelve hours (FR-HOME-03).",
+      path: ["nightEnd"],
+    }
+  )
+  .refine((values) => values.nightEnd === values.dayStart, {
+    message: "Day shift must start where the night shift ends.",
+    path: ["dayStart"],
+  });
 
-  return {
-    day_start: clockTimeOf(startMinutes),
-    day_end: nightStart,
-    night_start: nightStart,
-    night_end: clockTimeOf(startMinutes),
-    overlap_minutes: values.overlapMinutes,
-  };
-};
+export type ShiftTimingsFormValues = z.infer<typeof shiftTimingsFormSchema>;
+
+/** camelCase form values → the snake_case wire shape. No derivation left. */
+export const toShiftConfigWire = (
+  values: ShiftTimingsFormValues
+): ShiftConfigWire => ({
+  day_start: values.dayStart,
+  day_end: values.dayEnd,
+  night_start: values.nightStart,
+  night_end: values.nightEnd,
+  overlap_minutes: values.overlapMinutes,
+});
 
 /* -------------------------------------------------------------------------- */
 /* Per-user notification permissions — FR-NOT-01                               */
@@ -325,3 +350,192 @@ export const notificationPermissionDetailResponseSchema = envelopeSchema(
 export const notificationPermissionUpdateSchema = z.object({
   permissions: permissionMapSchema,
 });
+
+export type NotificationPermissionUpdateValues = z.infer<
+  typeof notificationPermissionUpdateSchema
+>;
+
+/* -------------------------------------------------------------------------- */
+/* Roles — §6 / FR-ADM-02                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The Roles admin screen (`app-source.txt` 1568–1579, 1613–1630): the five
+ * base roles plus §6's Administrator-created custom roles, each mapped to one
+ * AD group, with the module permissions and data scope **FR-ADM-02** and
+ * §9.1 require.
+ *
+ * **§9.1 confirms the shape, not the four module names.** The BRD says a
+ * custom role gets *"specific module permissions (View, Generate, Approve,
+ * Export), data scope (Full Plant or Area-Restricted), and AD-group
+ * mapping"* — so the four permission columns and the scope toggle are
+ * sourced, not invented. The permission **rows** — `Assistant`, `Summary`,
+ * `Actions`, `Reports` — have no BRD enumeration anywhere; they exist only in
+ * the prototype's literal table (`roleFormScreen`, line 1625) and are
+ * transcribed here as PROVISIONAL, pending owner confirmation that these four
+ * (and only these four) are the modules a custom role's permissions apply to.
+ *
+ * **Area-Restricted carries a live tension this schema does not resolve.**
+ * §9.2 says *"all operational roles have full-plant data visibility...
+ * Data-level area filtering... is therefore not required."* §9.1 still names
+ * `Area-Restricted` as a selectable data scope for a *custom* role, which
+ * §9.2 does not carve an exception for. Both are quoted as written; this
+ * schema accepts the value because the BRD offers it, and enforcing what it
+ * would actually restrict is unspecified and therefore not built.
+ *
+ * `type` is derived from membership in `ROLE_VALUES` (`constants/roles.ts`)
+ * rather than stored twice — a base role is exactly one of the five §6 names;
+ * everything else an Administrator creates is custom. The wire still carries
+ * it explicitly because the mock seed is the only place that classification
+ * is authored, and a real backend answers the same way rather than have every
+ * consumer re-derive it.
+ */
+export const roleTypeSchema = z.enum(["base", "custom"]);
+export type RoleType = z.infer<typeof roleTypeSchema>;
+
+export const ROLE_MODULES = [
+  "assistant",
+  "summary",
+  "actions",
+  "reports",
+] as const;
+export const roleModuleSchema = z.enum(ROLE_MODULES);
+export type RoleModule = z.infer<typeof roleModuleSchema>;
+
+export const ROLE_MODULE_LABEL: Record<RoleModule, string> = {
+  assistant: "Assistant",
+  summary: "Summary",
+  actions: "Actions",
+  reports: "Reports",
+};
+
+/** §9.1, verbatim order. */
+export const ROLE_PERMISSION_ACTIONS = [
+  "view",
+  "generate",
+  "approve",
+  "export",
+] as const;
+export const rolePermissionActionSchema = z.enum(ROLE_PERMISSION_ACTIONS);
+export type RolePermissionAction = z.infer<typeof rolePermissionActionSchema>;
+
+export const ROLE_PERMISSION_ACTION_LABEL: Record<
+  RolePermissionAction,
+  string
+> = {
+  view: "View",
+  generate: "Generate",
+  approve: "Approve",
+  export: "Export",
+};
+
+const modulePermissionSchema = z.object({
+  view: z.boolean(),
+  generate: z.boolean(),
+  approve: z.boolean(),
+  export: z.boolean(),
+});
+
+export type ModulePermission = z.infer<typeof modulePermissionSchema>;
+
+const modulePermissionMapSchema = z.object({
+  assistant: modulePermissionSchema,
+  summary: modulePermissionSchema,
+  actions: modulePermissionSchema,
+  reports: modulePermissionSchema,
+});
+
+export type ModulePermissionMap = z.infer<typeof modulePermissionMapSchema>;
+
+/** Every permission off — the safe starting point for a brand-new custom role. */
+export const EMPTY_MODULE_PERMISSIONS: ModulePermissionMap = {
+  assistant: { view: false, generate: false, approve: false, export: false },
+  summary: { view: false, generate: false, approve: false, export: false },
+  actions: { view: false, generate: false, approve: false, export: false },
+  reports: { view: false, generate: false, approve: false, export: false },
+};
+
+/** §9.1, verbatim. See the tension with §9.2 noted above. */
+export const roleDataScopeSchema = z.enum(["full_plant", "area_restricted"]);
+export type RoleDataScope = z.infer<typeof roleDataScopeSchema>;
+
+export const ROLE_DATA_SCOPE_LABEL: Record<RoleDataScope, string> = {
+  full_plant: "Full plant",
+  area_restricted: "Area-restricted",
+};
+
+export const roleWireSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  /** Display string from the prototype table, e.g. "24 users" / "1 user". */
+  member_count: z.number().int().nonnegative(),
+  ad_group: z.string(),
+  type: roleTypeSchema,
+  permissions: modulePermissionMapSchema,
+  data_scope: roleDataScopeSchema,
+});
+
+export const roleSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  memberCount: z.number().int().nonnegative(),
+  adGroup: z.string(),
+  type: roleTypeSchema,
+  permissions: modulePermissionMapSchema,
+  dataScope: roleDataScopeSchema,
+});
+
+export type RoleWire = z.infer<typeof roleWireSchema>;
+export type AdminRole = z.infer<typeof roleSchema>;
+
+export const toAdminRole = (wire: RoleWire): AdminRole => ({
+  id: wire.id,
+  name: wire.name,
+  memberCount: wire.member_count,
+  adGroup: wire.ad_group,
+  type: wire.type,
+  permissions: wire.permissions,
+  dataScope: wire.data_scope,
+});
+
+export const roleListResponseSchema = envelopeSchema(
+  paginatedSchema(roleWireSchema)
+);
+export const roleDetailResponseSchema = envelopeSchema(roleWireSchema);
+
+/**
+ * The New/Edit custom role form (`roleFormScreen`, `app-source.txt`
+ * 1613–1630). **"activate immediately"** (FR-ADM-02) is why there is no
+ * draft/pending state on the wire — a create or update is live the moment it
+ * saves, same as `useUpdateWorkflow`.
+ */
+export const roleFormSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Role name must be at least 2 characters")
+    .max(60, "Role name must be 60 characters or fewer"),
+  permissions: modulePermissionMapSchema,
+  dataScope: roleDataScopeSchema,
+  adGroup: z.string().min(1, "Choose or create an AD group mapping"),
+});
+
+export type RoleFormValues = z.infer<typeof roleFormSchema>;
+
+export const roleWriteWireSchema = z.object({
+  name: z.string().trim().min(2).max(60),
+  permissions: modulePermissionMapSchema,
+  data_scope: roleDataScopeSchema,
+  ad_group: z.string().min(1),
+});
+
+export type RoleWriteWire = z.infer<typeof roleWriteWireSchema>;
+
+/** What the form actually sends — camelCase in, snake_case on the wire. */
+export const toRoleWriteWire = (values: RoleFormValues): RoleWriteWire =>
+  roleWriteWireSchema.parse({
+    name: values.name,
+    permissions: values.permissions,
+    data_scope: values.dataScope,
+    ad_group: values.adGroup,
+  });

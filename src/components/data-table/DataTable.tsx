@@ -41,7 +41,7 @@ export const DataTable = <TData,>({
   const rows = table.getRowModel().rows;
 
   return (
-    <div className="overflow-x-auto rounded-md border">
+    <div className="overflow-x-auto rounded-md border border-border bg-card">
       <Table>
         <caption className="sr-only">{caption}</caption>
         <TableHeader>

@@ -13,14 +13,19 @@ import { useAuthStore } from "@/store/authStore";
 import { useSettingsStore } from "@/store/settingsStore";
 import { renderWithProviders } from "@/test/utils";
 
+const { pathname } = vi.hoisted(() => ({ pathname: { current: "/actions" } }));
+
 /**
  * `useRouter` is here for `DevRoleSwitcher`, which the rail now renders in its
  * footer — dev-only scaffolding that replaced the `/auth/mock-adfs` account
  * picker. Its own behaviour is covered in `DevRoleSwitcher.test.tsx`; this file
  * only needs it not to throw.
+ *
+ * `pathname` is mutable (`vi.hoisted`, the same technique `RoleGuard.test.tsx`
+ * uses) so a test can move the route without a second `vi.mock`.
  */
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/actions",
+  usePathname: () => pathname.current,
   useRouter: () => ({ push: vi.fn() }),
 }));
 
@@ -76,6 +81,7 @@ describe("Sidebar", () => {
     useAuthStore.setState({ token: null, expiresAt: null, hasHydrated: true });
     // Persisted, so the collapse test would otherwise leak into the next one.
     useSettingsStore.setState({ sidebarCollapsed: false });
+    pathname.current = "/actions";
   });
 
   afterEach(() => {
@@ -96,13 +102,13 @@ describe("Sidebar", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows only the user directory to a session holding user:read", async () => {
+  it("shows only administration to a session holding user:read", async () => {
     signInWith(["dashboard:configure", "user:read"], ["super_user"]);
 
     renderWithProviders(<Sidebar />);
 
     expect(
-      await screen.findByRole("link", { name: "Users" })
+      await screen.findByRole("link", { name: "Administration" })
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Pending actions" })
@@ -122,7 +128,7 @@ describe("Sidebar", () => {
     renderWithProviders(<Sidebar />);
 
     expect(
-      await screen.findByRole("link", { name: "Users" })
+      await screen.findByRole("link", { name: "Administration" })
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Audit log" })).toBeInTheDocument();
     expect(
@@ -139,7 +145,7 @@ describe("Sidebar", () => {
       await screen.findByRole("link", { name: "Pending actions" })
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: "Users" })
+      screen.queryByRole("link", { name: "Administration" })
     ).not.toBeInTheDocument();
   });
 
@@ -181,8 +187,8 @@ describe("Sidebar", () => {
 
     renderWithProviders(<Sidebar />);
 
-    const users = await screen.findByRole("link", { name: "Users" });
-    expect(users).toHaveTextContent("Users");
+    const admin = await screen.findByRole("link", { name: "Administration" });
+    expect(admin).toHaveTextContent("Administration");
     expect(screen.getByRole("link", { name: "Audit log" })).toHaveTextContent(
       "Audit log"
     );
@@ -201,7 +207,30 @@ describe("Sidebar", () => {
       screen.queryByRole("link", { name: "Pending actions" })
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: "Users" })
+      screen.queryByRole("link", { name: "Administration" })
     ).not.toBeInTheDocument();
+  });
+
+  /**
+   * Regression: `ROUTES.ADMIN.DASHBOARD_BUILDER.LIST` used to sit in both the
+   * "Administration" row's `activePrefixes` *and* be "Dashboard Builder"'s own
+   * `href`, so visiting `/admin/dashboard-builder` matched both rows'
+   * `isActive` check and highlighted them simultaneously — not what the
+   * prototype's `superuser` nav shows (`app-source.txt` line 16: two distinct
+   * rows, only one of them ever current).
+   */
+  it("highlights only Dashboard Builder, not Administration too, on the builder route", async () => {
+    pathname.current = "/admin/dashboard-builder";
+    signInWith(["dashboard:configure", "user:read"], ["super_user"]);
+
+    renderWithProviders(<Sidebar />);
+
+    const builder = await screen.findByRole("link", {
+      name: "Dashboard Builder",
+    });
+    expect(builder).toHaveAttribute("aria-current", "page");
+    expect(
+      screen.getByRole("link", { name: "Administration" })
+    ).not.toHaveAttribute("aria-current");
   });
 });

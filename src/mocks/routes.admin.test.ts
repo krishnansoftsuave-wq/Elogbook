@@ -2,6 +2,17 @@ import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  DELETE as roleDELETE,
+  GET as roleGET,
+  PUT as rolePUT,
+} from "@/app/api/v1/admin/roles/[id]/route";
+import {
+  GET as rolesGET,
+  POST as rolesPOST,
+} from "@/app/api/v1/admin/roles/route";
+import { GET as notificationPermissionsGET } from "@/app/api/v1/admin/notification-permissions/route";
+import { PUT as notificationPermissionPUT } from "@/app/api/v1/admin/notification-permissions/[username]/route";
+import {
   GET as shiftConfigGET,
   PUT as shiftConfigPUT,
 } from "@/app/api/v1/admin/shift-config/route";
@@ -18,6 +29,11 @@ import {
   PATCH as userPATCH,
 } from "@/app/api/v1/users/[username]/route";
 import {
+  EMPTY_MODULE_PERMISSIONS,
+  notificationPermissionDetailResponseSchema,
+  notificationPermissionListResponseSchema,
+  roleDetailResponseSchema,
+  roleListResponseSchema,
   shiftConfigResponseSchema,
   workflowDetailResponseSchema,
   workflowListResponseSchema,
@@ -125,6 +141,69 @@ const putShiftConfig = (body: unknown, persona?: Persona): Promise<Response> =>
       },
       body: JSON.stringify(body),
     })
+  );
+
+const putNotificationPermission = (
+  username: string,
+  body: unknown,
+  persona?: Persona
+): Promise<Response> =>
+  notificationPermissionPUT(
+    new NextRequest(`${BASE}/admin/notification-permissions/${username}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...(persona ? { Authorization: bearer(persona) } : {}),
+      },
+      body: JSON.stringify(body),
+    }),
+    { params: Promise.resolve({ username }) }
+  );
+
+const deleteRole = (id: string, persona?: Persona): Promise<Response> =>
+  roleDELETE(
+    new NextRequest(`${BASE}/admin/roles/${id}`, {
+      method: "DELETE",
+      headers: persona ? { Authorization: bearer(persona) } : {},
+    }),
+    { params: Promise.resolve({ id }) }
+  );
+
+const getRole = (id: string, persona?: Persona): Promise<Response> =>
+  roleGET(
+    new NextRequest(`${BASE}/admin/roles/${id}`, {
+      headers: persona ? { Authorization: bearer(persona) } : {},
+    }),
+    { params: Promise.resolve({ id }) }
+  );
+
+const postRole = (body: unknown, persona?: Persona): Promise<Response> =>
+  rolesPOST(
+    new NextRequest(`${BASE}/admin/roles`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(persona ? { Authorization: bearer(persona) } : {}),
+      },
+      body: JSON.stringify(body),
+    })
+  );
+
+const putRole = (
+  id: string,
+  body: unknown,
+  persona?: Persona
+): Promise<Response> =>
+  rolePUT(
+    new NextRequest(`${BASE}/admin/roles/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...(persona ? { Authorization: bearer(persona) } : {}),
+      },
+      body: JSON.stringify(body),
+    }),
+    { params: Promise.resolve({ id }) }
   );
 
 const postToken = (body: unknown): Promise<Response> =>
@@ -612,6 +691,397 @@ describe("PUT /admin/shift-config", () => {
 
     expect(latestAudit()?.action).toBe("UPDATE_SHIFT_CONFIG");
     expect(latestAudit()?.target).toContain("07:00");
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET|PUT /admin/notification-permissions — §6.4 / FR-NOT-01                  */
+/* -------------------------------------------------------------------------- */
+
+const ALL_OFF_PERMISSIONS = {
+  action_assigned: { in_app: false, email: false },
+  action_overdue: { in_app: false, email: false },
+  summary_ready: { in_app: false, email: false },
+  report_ready: { in_app: false, email: false },
+};
+
+describe("GET /admin/notification-permissions", () => {
+  it("returns a paginated envelope the client schema accepts", async () => {
+    const response = await get(
+      notificationPermissionsGET,
+      "/admin/notification-permissions",
+      "admin"
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(() =>
+      notificationPermissionListResponseSchema.parse(body)
+    ).not.toThrow();
+    expect(body.data.total).toBeGreaterThan(0);
+  });
+
+  it("refuses a Super User with a 403", async () => {
+    const response = await get(
+      notificationPermissionsGET,
+      "/admin/notification-permissions",
+      "superUser"
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it("refuses an operator with a 403", async () => {
+    const response = await get(
+      notificationPermissionsGET,
+      "/admin/notification-permissions",
+      "operator"
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it("refuses an unauthenticated request with a 401", async () => {
+    const response = await get(
+      notificationPermissionsGET,
+      "/admin/notification-permissions"
+    );
+    expect(response.status).toBe(401);
+  });
+});
+
+describe("PUT /admin/notification-permissions/:username", () => {
+  it("replaces the user's permission map and answers with the updated record", async () => {
+    const response = await putNotificationPermission(
+      ACCOUNTS.operator,
+      { permissions: ALL_OFF_PERMISSIONS },
+      "admin"
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(() =>
+      notificationPermissionDetailResponseSchema.parse(body)
+    ).not.toThrow();
+    expect(body.data.permissions).toEqual(ALL_OFF_PERMISSIONS);
+  });
+
+  it("appears in a subsequent GET, not just the mutation's own response", async () => {
+    await putNotificationPermission(
+      ACCOUNTS.operator,
+      { permissions: ALL_OFF_PERMISSIONS },
+      "admin"
+    );
+
+    const response = await get(
+      notificationPermissionsGET,
+      "/admin/notification-permissions",
+      "admin"
+    );
+    const { items } = (await response.json()).data;
+    const row = items.find(
+      (candidate: { username: string }) =>
+        candidate.username === ACCOUNTS.operator
+    );
+
+    expect(row.permissions).toEqual(ALL_OFF_PERMISSIONS);
+  });
+
+  it("404s an unknown username", async () => {
+    const response = await putNotificationPermission(
+      "nobody.here",
+      { permissions: ALL_OFF_PERMISSIONS },
+      "admin"
+    );
+    expect(response.status).toBe(404);
+  });
+
+  /**
+   * §6.4 names this an Administrator capability; §6.5's five Super User
+   * bullets say nothing about it — unlike the two workflow switches the Super
+   * User does control, this one has no split ownership to test for.
+   */
+  it("refuses a Super User with a 403", async () => {
+    const response = await putNotificationPermission(
+      ACCOUNTS.operator,
+      { permissions: ALL_OFF_PERMISSIONS },
+      "superUser"
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it("refuses an operator with a 403", async () => {
+    const response = await putNotificationPermission(
+      ACCOUNTS.operator,
+      { permissions: ALL_OFF_PERMISSIONS },
+      "operator"
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it("refuses an unauthenticated request with a 401", async () => {
+    const response = await putNotificationPermission(ACCOUNTS.operator, {
+      permissions: ALL_OFF_PERMISSIONS,
+    });
+    expect(response.status).toBe(401);
+  });
+
+  it("rejects a body missing a notification key", async () => {
+    const { action_assigned: _omit, ...incomplete } = ALL_OFF_PERMISSIONS;
+    const response = await putNotificationPermission(
+      ACCOUNTS.operator,
+      { permissions: incomplete },
+      "admin"
+    );
+
+    expect(response.status).toBe(422);
+    expect((await response.json()).error.details).toHaveProperty(
+      "permissions.action_assigned"
+    );
+  });
+
+  it("writes an audit entry naming the user whose permissions changed", async () => {
+    await putNotificationPermission(
+      ACCOUNTS.operator,
+      { permissions: ALL_OFF_PERMISSIONS },
+      "admin"
+    );
+
+    expect(latestAudit()?.action).toBe("UPDATE_NOTIFICATION_PERMISSION");
+    expect(latestAudit()?.target).toBe(ACCOUNTS.operator);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* GET /admin/roles, DELETE /admin/roles/:id — §6 / FR-ADM-02                  */
+/* -------------------------------------------------------------------------- */
+
+describe("GET /admin/roles", () => {
+  it("returns a paginated envelope the client schema accepts", async () => {
+    const response = await get(rolesGET, "/admin/roles", "admin");
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(() => roleListResponseSchema.parse(body)).not.toThrow();
+    expect(body.data.total).toBe(10);
+  });
+
+  it("refuses a Super User with a 403", async () => {
+    const response = await get(rolesGET, "/admin/roles", "superUser");
+    expect(response.status).toBe(403);
+  });
+
+  it("refuses an operator with a 403", async () => {
+    const response = await get(rolesGET, "/admin/roles", "operator");
+    expect(response.status).toBe(403);
+  });
+
+  it("refuses an unauthenticated request with a 401", async () => {
+    const response = await get(rolesGET, "/admin/roles");
+    expect(response.status).toBe(401);
+  });
+});
+
+describe("GET /admin/roles/:id", () => {
+  it("returns one role in an envelope the client schema accepts", async () => {
+    const response = await getRole("ROLE-0007", "admin");
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(() => roleDetailResponseSchema.parse(body)).not.toThrow();
+    expect(body.data.name).toBe("Shutdown Coordinator");
+  });
+
+  it("404s an unknown role id", async () => {
+    const response = await getRole("ROLE-9999", "admin");
+    expect(response.status).toBe(404);
+  });
+
+  it("refuses a Super User with a 403", async () => {
+    const response = await getRole("ROLE-0007", "superUser");
+    expect(response.status).toBe(403);
+  });
+});
+
+/** §6 / FR-ADM-02, §9.1: "specific module permissions ..., data scope ..., and AD-group mapping". */
+const NEW_ROLE_BODY = {
+  name: "Safety Auditor",
+  permissions: {
+    ...EMPTY_MODULE_PERMISSIONS,
+    assistant: { view: true, generate: false, approve: false, export: false },
+  },
+  data_scope: "full_plant",
+  ad_group: "ELOGBOOK_SAFETY_AUDITOR",
+} as const;
+
+describe("POST /admin/roles", () => {
+  it("creates a custom role, live and with zero members", async () => {
+    const response = await postRole(NEW_ROLE_BODY, "admin");
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(() => roleDetailResponseSchema.parse(body)).not.toThrow();
+    expect(body.data.type).toBe("custom");
+    expect(body.data.member_count).toBe(0);
+    expect(body.data.ad_group).toBe("ELOGBOOK_SAFETY_AUDITOR");
+  });
+
+  it("appends to the list a subsequent GET returns", async () => {
+    await postRole(NEW_ROLE_BODY, "admin");
+
+    const response = await get(rolesGET, "/admin/roles?pageSize=100", "admin");
+    const { items } = (await response.json()).data;
+
+    expect(
+      items.some((role: { name: string }) => role.name === "Safety Auditor")
+    ).toBe(true);
+  });
+
+  it("rejects a role name under two characters", async () => {
+    const response = await postRole({ ...NEW_ROLE_BODY, name: "A" }, "admin");
+
+    expect(response.status).toBe(422);
+    expect((await response.json()).error.details).toHaveProperty("name");
+  });
+
+  it("refuses a Super User with a 403", async () => {
+    const response = await postRole(NEW_ROLE_BODY, "superUser");
+    expect(response.status).toBe(403);
+  });
+
+  it("refuses an unauthenticated request with a 401", async () => {
+    const response = await postRole(NEW_ROLE_BODY);
+    expect(response.status).toBe(401);
+  });
+
+  it("writes an audit entry naming the created role", async () => {
+    await postRole(NEW_ROLE_BODY, "admin");
+
+    expect(latestAudit()?.action).toBe("CREATE_ROLE");
+    expect(latestAudit()?.target).toContain("Safety Auditor");
+  });
+});
+
+describe("PUT /admin/roles/:id", () => {
+  const UPDATE_BODY = {
+    name: "Shutdown Coordinator",
+    permissions: EMPTY_MODULE_PERMISSIONS,
+    data_scope: "area_restricted",
+    ad_group: "ELOGBOOK_SHUTDOWN",
+  } as const;
+
+  it("updates a custom role and answers with the record it changed", async () => {
+    const response = await putRole("ROLE-0007", UPDATE_BODY, "admin");
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.data_scope).toBe("area_restricted");
+  });
+
+  it("leaves member_count and type untouched by the write", async () => {
+    await putRole("ROLE-0007", UPDATE_BODY, "admin");
+
+    const role = mockStore().roles.find(
+      (candidate) => candidate.id === "ROLE-0007"
+    );
+    expect(role?.member_count).toBe(1);
+    expect(role?.type).toBe("custom");
+  });
+
+  /**
+   * ROLE-0001 is Operator, a base role. FR-AUTH-02 only pins its AD group
+   * mapping — name, permissions and data scope still write through even
+   * though `UPDATE_BODY` asks for a different `ad_group`.
+   */
+  it("updates a base role's name, permissions and data scope but pins its AD group", async () => {
+    const response = await putRole("ROLE-0001", UPDATE_BODY, "admin");
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.name).toBe("Shutdown Coordinator");
+    expect(body.data.data_scope).toBe("area_restricted");
+    expect(body.data.ad_group).toBe("ELOGBOOK_OPERATOR");
+  });
+
+  it("leaves member_count and type untouched by a base role write", async () => {
+    await putRole("ROLE-0001", UPDATE_BODY, "admin");
+
+    const role = mockStore().roles.find(
+      (candidate) => candidate.id === "ROLE-0001"
+    );
+    expect(role?.member_count).toBe(24);
+    expect(role?.type).toBe("base");
+  });
+
+  it("404s an unknown role id", async () => {
+    const response = await putRole("ROLE-9999", UPDATE_BODY, "admin");
+    expect(response.status).toBe(404);
+  });
+
+  it("refuses a Super User with a 403", async () => {
+    const response = await putRole("ROLE-0007", UPDATE_BODY, "superUser");
+    expect(response.status).toBe(403);
+  });
+
+  it("writes an audit entry naming the updated role", async () => {
+    await putRole("ROLE-0007", UPDATE_BODY, "admin");
+
+    expect(latestAudit()?.action).toBe("UPDATE_ROLE");
+    expect(latestAudit()?.target).toBe("Shutdown Coordinator");
+  });
+});
+
+describe("DELETE /admin/roles/:id", () => {
+  it("404s an unknown role id", async () => {
+    const response = await deleteRole("ROLE-9999", "admin");
+    expect(response.status).toBe(404);
+  });
+
+  /** ROLE-0001 is Operator, a base role — never deletable, members or not. */
+  it("409s a base role", async () => {
+    const response = await deleteRole("ROLE-0001", "admin");
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error.code).toBe("conflict");
+  });
+
+  /** ROLE-0007, Shutdown Coordinator, seeds with one member. */
+  it("409s a custom role that still has members", async () => {
+    const response = await deleteRole("ROLE-0007", "admin");
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error.message).toContain("role in use");
+  });
+
+  it("deletes a custom role with no members and answers 200", async () => {
+    const role = mockStore().roles.find(
+      (candidate) => candidate.id === "ROLE-0007"
+    );
+    if (role) role.member_count = 0;
+
+    const response = await deleteRole("ROLE-0007", "admin");
+
+    expect(response.status).toBe(200);
+    expect(
+      mockStore().roles.some((candidate) => candidate.id === "ROLE-0007")
+    ).toBe(false);
+  });
+
+  it("refuses a Super User with a 403", async () => {
+    const response = await deleteRole("ROLE-0007", "superUser");
+    expect(response.status).toBe(403);
+  });
+
+  it("writes an audit entry naming the deleted role", async () => {
+    const role = mockStore().roles.find(
+      (candidate) => candidate.id === "ROLE-0007"
+    );
+    if (role) role.member_count = 0;
+
+    await deleteRole("ROLE-0007", "admin");
+
+    expect(latestAudit()?.action).toBe("DELETE_ROLE");
+    expect(latestAudit()?.target).toContain("Shutdown Coordinator");
   });
 });
 

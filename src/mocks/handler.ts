@@ -145,6 +145,12 @@ export const forbidden = (message: string): Response =>
     status: 403,
   });
 
+/** The request is well-formed and permitted but conflicts with the resource's current state. */
+export const conflict = (message: string): Response =>
+  NextResponse.json(fail(MOCK_ERROR_CODES.CONFLICT, message), {
+    status: 409,
+  });
+
 /**
  * §4's 422 shape, matching what `POST /dev/token` already answers with:
  * `validation_error` plus per-field details. `fieldErrorsFromZod` is the same

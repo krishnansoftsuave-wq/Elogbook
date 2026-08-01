@@ -37,10 +37,38 @@ export const ROUTES = {
     USER_PREVIEW: (username: string) => `/admin/users/${username}/preview`,
     /** FR-PA-05 / FR-SUM-08 / FR-ADM-06 — the four workflow switches. */
     WORKFLOWS: "/admin/workflows",
+    /** §6 / FR-ADM-02 — base roles plus Administrator-created custom roles. */
+    ROLES: "/admin/roles",
+    /**
+     * `roleFormScreen` (`app-source.txt` 1613–1630) — permissions matrix, data
+     * scope and AD group mapping. Routed but not yet built: a stub page holds
+     * the place so the Roles list's New/Edit actions have somewhere real to
+     * send a click, per the same reasoning `ROUTES.ENTRY_ADD`/`ENTRY_EDIT`
+     * follow.
+     */
+    ROLE_ADD: "/admin/roles/add",
+    ROLE_EDIT: (id: string) => `/admin/roles/${id}/edit`,
     /** FR-ADM-05 / FR-OBS-01 / §9.3 — the immutable trail. */
     AUDIT: "/admin/audit",
     /** FR-HOME-03 — Administrator-configurable shift boundaries. */
     SHIFT_CONFIG: "/admin/shift-config",
+    /** §6.4 / FR-NOT-01 — per-user notification permissions. */
+    NOTIFICATIONS: "/admin/notifications",
+    /** §7.12 / FR-ADM-06 — the widget-to-role assignment screen. */
+    DASHBOARDS: "/admin/dashboards",
+    /**
+     * ⚠️ PROTOTYPE-ONLY — no BRD basis, unlike `DASHBOARDS` above. The
+     * prototype's `dashboards()` list/builder/preview/publish flow
+     * (`app-source.txt` 2045–2192), built at the user's explicit request.
+     * See `features/dashboard-builder/schemas.ts`.
+     */
+    DASHBOARD_BUILDER: {
+      LIST: "/admin/dashboard-builder",
+      EDIT: (role: string) => `/admin/dashboard-builder/${role}`,
+      LIBRARY: (role: string) => `/admin/dashboard-builder/${role}/library`,
+      PREVIEW: (role: string) => `/admin/dashboard-builder/${role}/preview`,
+      VERSIONS: (role: string) => `/admin/dashboard-builder/${role}/versions`,
+    },
   },
   /** §7.2 / FR-HOME-01 — the role-based dashboard FR-AUTH-01 redirects to. */
   DASHBOARD: "/dashboard",
@@ -149,6 +177,59 @@ export const ROUTE_PERMISSIONS = {
    */
   ADMIN_SHIFT_CONFIG: {
     prefix: "/admin/shift-config",
+    permissions: [WILDCARD_PERMISSION],
+  },
+  /**
+   * §6.4 — "Control, per user, which notifications each user may view /
+   * receive." Administrator-only on the same reading as `ADMIN_ROLES` and
+   * `ADMIN_SHIFT_CONFIG`: §6.5's five Super User bullets say nothing about
+   * notification permissions, and `PATCH /admin/notification-permissions`
+   * already takes the wildcard.
+   */
+  ADMIN_NOTIFICATIONS: {
+    prefix: "/admin/notifications",
+    permissions: [WILDCARD_PERMISSION],
+  },
+  /**
+   * §7.12 — the widget-to-role assignment screen, and **Super User capable**
+   * on the same reading `ADMIN_WORKFLOWS` above already established.
+   *
+   * **FR-ADM-06**: "Provide a **Super User** role for role-based dashboard and
+   * permission management: ... assign widgets to roles, control which metrics
+   * each role sees." **FR-DASH-02** says the same of "Admin and Super User"
+   * together. `PUT /dashboards/widgets/:id` already gates on
+   * `dashboard:configure`, which only the Super User role holds outright — an
+   * Administrator reaches it through the wildcard.
+   *
+   * `user:read` rides along for the same reason it does on `ADMIN_WORKFLOWS`:
+   * this route sits inside the `(admin)` group, whose layout demands it, so a
+   * policy naming only the leaf permission would readmit the infinite-redirect
+   * shape `ACTIONS`'s comment documents.
+   */
+  ADMIN_DASHBOARDS: {
+    prefix: "/admin/dashboards",
+    permissions: ["user:read", "dashboard:configure"],
+  },
+  /**
+   * ⚠️ PROTOTYPE-ONLY — no BRD basis, unlike `ADMIN_DASHBOARDS` above. Same
+   * permission, since it is the same actors (Super User directly,
+   * Administrator via the wildcard) configuring dashboards — just a
+   * different, prototype-parity screen for doing it.
+   */
+  ADMIN_DASHBOARD_BUILDER: {
+    prefix: "/admin/dashboard-builder",
+    permissions: ["user:read", "dashboard:configure"],
+  },
+  /**
+   * §6 — "an Administrator can create custom roles with their own permissions
+   * through the admin API" (`constants/roles.ts`). Administrator-only, same
+   * reasoning as `ADMIN_AUDIT`/`ADMIN_SHIFT_CONFIG`: §6.5's Super User bullets
+   * are silent on role management, and there is no named permission short of
+   * the wildcard a custom role could hold to reach here without also being
+   * able to grant itself anything.
+   */
+  ADMIN_ROLES: {
+    prefix: "/admin/roles",
     permissions: [WILDCARD_PERMISSION],
   },
   /**

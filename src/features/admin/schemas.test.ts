@@ -1,14 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  EMPTY_MODULE_PERMISSIONS,
   NOTIFICATION_PERMISSION_KEYS,
   WORKFLOW_KEYS,
-  deriveShiftConfig,
   notificationPermissionWireSchema,
+  roleFormSchema,
+  roleWireSchema,
   shiftConfigWireSchema,
   shiftTimingsFormSchema,
+  toAdminRole,
   toNotificationPermission,
+  toRoleWriteWire,
   toShiftConfig,
+  toShiftConfigWire,
   toWorkflow,
   workflowWireSchema,
 } from "@/features/admin/schemas";
@@ -75,16 +80,16 @@ describe("shift config — FR-HOME-03", () => {
   });
 });
 
-/**
- * **Two fields are editable; the other three follow.** FR-HOME-03 defines a
- * shift as "a 12-hour period", so once the day shift's start is known its end
- * and both night boundaries are arithmetic. The prototype draws four
- * independently editable inputs — the named deviation.
- */
-describe("deriveShiftConfig — FR-HOME-03", () => {
-  it("puts the night boundary twelve hours after the day's", () => {
+describe("toShiftConfigWire", () => {
+  it("maps camelCase form values straight to the snake_case wire shape", () => {
     expect(
-      deriveShiftConfig({ dayStart: "06:00", overlapMinutes: 15 })
+      toShiftConfigWire({
+        dayStart: "06:00",
+        dayEnd: "18:00",
+        nightStart: "18:00",
+        nightEnd: "06:00",
+        overlapMinutes: 15,
+      })
     ).toEqual({
       day_start: "06:00",
       day_end: "18:00",
@@ -94,66 +99,94 @@ describe("deriveShiftConfig — FR-HOME-03", () => {
     });
   });
 
-  it("wraps past midnight rather than producing a 26th hour", () => {
-    expect(deriveShiftConfig({ dayStart: "19:30", overlapMinutes: 0 })).toEqual(
-      {
-        day_start: "19:30",
-        day_end: "07:30",
-        night_start: "07:30",
-        night_end: "19:30",
-        overlap_minutes: 0,
-      }
-    );
-  });
-
-  it("keeps the day's end and the night's start the same instant", () => {
-    // Two names for one boundary — a gap or an overlap between them would be a
-    // shape FR-HOME-03's "12-hour period" does not describe.
-    for (const dayStart of ["00:00", "06:00", "13:45", "23:59"]) {
-      const config = deriveShiftConfig({ dayStart, overlapMinutes: 15 });
-      expect(config.day_end).toBe(config.night_start);
-      expect(config.night_end).toBe(config.day_start);
-    }
-  });
-
   it("produces a value the wire schema accepts", () => {
     expect(() =>
       shiftConfigWireSchema.parse(
-        deriveShiftConfig({ dayStart: "07:00", overlapMinutes: 30 })
+        toShiftConfigWire({
+          dayStart: "07:00",
+          dayEnd: "19:00",
+          nightStart: "19:00",
+          nightEnd: "07:00",
+          overlapMinutes: 30,
+        })
       )
     ).not.toThrow();
   });
 });
 
-describe("shiftTimingsFormSchema", () => {
-  it("accepts the seeded boundary", () => {
+/**
+ * **All four boundaries are independently editable**, matching the
+ * prototype's literal layout. FR-HOME-03 still fixes a shift at twelve
+ * hours, so that shape is enforced by these refinements at submit time
+ * rather than by deriving the fields from one another.
+ */
+describe("shiftTimingsFormSchema — FR-HOME-03", () => {
+  const VALID = {
+    dayStart: "06:00",
+    dayEnd: "18:00",
+    nightStart: "18:00",
+    nightEnd: "06:00",
+    overlapMinutes: 15,
+  };
+
+  it("accepts a valid twelve-hour split", () => {
+    expect(shiftTimingsFormSchema.safeParse(VALID).success).toBe(true);
+  });
+
+  it("accepts a split that wraps past midnight", () => {
     expect(
       shiftTimingsFormSchema.safeParse({
-        dayStart: "06:00",
-        overlapMinutes: 15,
+        dayStart: "19:30",
+        dayEnd: "07:30",
+        nightStart: "07:30",
+        nightEnd: "19:30",
+        overlapMinutes: 0,
       }).success
     ).toBe(true);
   });
 
   it("rejects a clock time that is not 24-hour HH:MM", () => {
     expect(
-      shiftTimingsFormSchema.safeParse({ dayStart: "6am", overlapMinutes: 15 })
+      shiftTimingsFormSchema.safeParse({ ...VALID, dayStart: "6am" }).success
+    ).toBe(false);
+  });
+
+  it("rejects a day shift that is not exactly twelve hours", () => {
+    expect(
+      shiftTimingsFormSchema.safeParse({ ...VALID, dayEnd: "14:00" }).success
+    ).toBe(false);
+  });
+
+  it("rejects a night shift that does not start where the day shift ends", () => {
+    expect(
+      shiftTimingsFormSchema.safeParse({ ...VALID, nightStart: "20:00" })
         .success
+    ).toBe(false);
+  });
+
+  it("rejects a night shift that is not exactly twelve hours", () => {
+    expect(
+      shiftTimingsFormSchema.safeParse({ ...VALID, nightEnd: "04:00" }).success
+    ).toBe(false);
+  });
+
+  it("rejects a day shift that does not start where the night shift ends", () => {
+    expect(
+      shiftTimingsFormSchema.safeParse({
+        ...VALID,
+        dayStart: "05:00",
+        nightEnd: "06:00",
+      }).success
     ).toBe(false);
   });
 
   it("rejects a negative or fractional overlap", () => {
     expect(
-      shiftTimingsFormSchema.safeParse({
-        dayStart: "06:00",
-        overlapMinutes: -1,
-      }).success
+      shiftTimingsFormSchema.safeParse({ ...VALID, overlapMinutes: -1 }).success
     ).toBe(false);
     expect(
-      shiftTimingsFormSchema.safeParse({
-        dayStart: "06:00",
-        overlapMinutes: 7.5,
-      }).success
+      shiftTimingsFormSchema.safeParse({ ...VALID, overlapMinutes: 7.5 })
+        .success
     ).toBe(false);
   });
 
@@ -163,16 +196,12 @@ describe("shiftTimingsFormSchema", () => {
    */
   it("rejects an overlap longer than the shift", () => {
     expect(
-      shiftTimingsFormSchema.safeParse({
-        dayStart: "06:00",
-        overlapMinutes: 720,
-      }).success
+      shiftTimingsFormSchema.safeParse({ ...VALID, overlapMinutes: 720 })
+        .success
     ).toBe(true);
     expect(
-      shiftTimingsFormSchema.safeParse({
-        dayStart: "06:00",
-        overlapMinutes: 721,
-      }).success
+      shiftTimingsFormSchema.safeParse({ ...VALID, overlapMinutes: 721 })
+        .success
     ).toBe(false);
   });
 });
@@ -243,5 +272,91 @@ describe("notification permissions — FR-NOT-01", () => {
     );
     expect(row.username).toBe("said.albusaidi");
     expect(row.displayName).toBe("Said Al-Busaidi");
+  });
+});
+
+describe("roles — §6 / FR-ADM-02", () => {
+  const ROLE = {
+    id: "ROLE-0007",
+    name: "Shutdown Coordinator",
+    member_count: 1,
+    ad_group: "ELOGBOOK_SHUTDOWN",
+    type: "custom",
+    permissions: EMPTY_MODULE_PERMISSIONS,
+    data_scope: "full_plant",
+  } as const;
+
+  it("maps to camelCase", () => {
+    const role = toAdminRole(roleWireSchema.parse(ROLE));
+
+    expect(role.memberCount).toBe(1);
+    expect(role.adGroup).toBe("ELOGBOOK_SHUTDOWN");
+    expect(role.type).toBe("custom");
+    expect(role.dataScope).toBe("full_plant");
+  });
+
+  it("rejects a type outside base/custom", () => {
+    expect(() => roleWireSchema.parse({ ...ROLE, type: "system" })).toThrow();
+  });
+
+  it("rejects a negative member count", () => {
+    expect(() => roleWireSchema.parse({ ...ROLE, member_count: -1 })).toThrow();
+  });
+
+  it("rejects a data scope outside full_plant/area_restricted", () => {
+    expect(() =>
+      roleWireSchema.parse({ ...ROLE, data_scope: "site_wide" })
+    ).toThrow();
+  });
+
+  it("requires all four permission actions per module", () => {
+    expect(() =>
+      roleWireSchema.parse({
+        ...ROLE,
+        permissions: { ...EMPTY_MODULE_PERMISSIONS, assistant: { view: true } },
+      })
+    ).toThrow();
+  });
+});
+
+/**
+ * §9.1 — "specific module permissions (View, Generate, Approve, Export),
+ * data scope (Full Plant or Area-Restricted), and AD-group mapping."
+ */
+describe("roleFormSchema — §9.1 / FR-ADM-02", () => {
+  const VALUES = {
+    name: "Shutdown Coordinator",
+    permissions: EMPTY_MODULE_PERMISSIONS,
+    dataScope: "full_plant",
+    adGroup: "ELOGBOOK_SHUTDOWN",
+  } as const;
+
+  it("accepts a complete submission", () => {
+    expect(roleFormSchema.safeParse(VALUES).success).toBe(true);
+  });
+
+  it("rejects a name under two characters", () => {
+    expect(roleFormSchema.safeParse({ ...VALUES, name: "A" }).success).toBe(
+      false
+    );
+  });
+
+  it("rejects an empty AD group", () => {
+    expect(roleFormSchema.safeParse({ ...VALUES, adGroup: "" }).success).toBe(
+      false
+    );
+  });
+
+  it("trims the role name", () => {
+    const parsed = roleFormSchema.parse({ ...VALUES, name: "  Shutdown  " });
+    expect(parsed.name).toBe("Shutdown");
+  });
+
+  it("maps camelCase form values to the snake_case wire shape", () => {
+    const wire = toRoleWriteWire(VALUES);
+
+    expect(wire.data_scope).toBe("full_plant");
+    expect(wire.ad_group).toBe("ELOGBOOK_SHUTDOWN");
+    expect(wire.permissions).toEqual(EMPTY_MODULE_PERMISSIONS);
   });
 });

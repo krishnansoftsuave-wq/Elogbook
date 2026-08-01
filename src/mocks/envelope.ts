@@ -17,6 +17,13 @@ export const MOCK_ERROR_CODES = {
    * production gate needs a body for "this endpoint no longer exists" (§4).
    */
   NOT_FOUND: "not_found",
+  /**
+   * Not in §3's table either. `DELETE /admin/roles/:id` needs a code for the
+   * prototype's "role in use" block (`app-source.txt` 1579) — a request that
+   * is well-formed and permitted but conflicts with the resource's current
+   * state, which is exactly what 409 means and neither 422 nor 403 do.
+   */
+  CONFLICT: "conflict",
 } as const;
 
 export type MockErrorCode =

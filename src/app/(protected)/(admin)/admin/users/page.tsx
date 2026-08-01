@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { PageHeader } from "@/components/layout/PageHeader";
+import { AdminTabs } from "@/features/admin/components/AdminTabs";
 import { UsersTable } from "@/features/users/components/UsersTable";
 
 export const metadata: Metadata = { title: "Users" };
@@ -21,6 +22,7 @@ export default function UsersPage() {
         title="Users"
         description="Everyone Active Directory has given access to this platform. Accounts are created and removed in AD; platform access is set here."
       />
+      <AdminTabs />
       <UsersTable />
     </>
   );
