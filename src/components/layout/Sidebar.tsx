@@ -9,6 +9,7 @@ import {
   History,
   LayoutDashboard,
   LayoutGrid,
+  LayoutTemplate,
   ListChecks,
   PanelLeftClose,
   PanelLeftOpen,
@@ -155,6 +156,16 @@ const NAV_ITEMS: readonly NavItem[] = [
     icon: LayoutGrid,
     permissions: ROUTE_PERMISSIONS.ADMIN_DASHBOARD_BUILDER.permissions,
   },
+  {
+    // The `dashboards` module key has existed in `ROLE_MODULES` since the role
+    // switcher was built, counted toward the Super User's "5 modules" subtitle
+    // and rendered nothing, because no route resolved it. This is that route.
+    href: ROUTES.DASHBOARDS,
+    module: "dashboards",
+    label: "Dashboard config",
+    icon: LayoutTemplate,
+    permissions: ROUTE_PERMISSIONS.DASHBOARDS.permissions,
+  },
 ];
 
 export const Sidebar = () => {
@@ -177,9 +188,10 @@ export const Sidebar = () => {
     name the session's role — a custom role has no module list, and filtering by
     an empty one would blank the nav rather than fall back to permissions.
 
-    Modules with no route here (`trends`, `reports`, `decisions`) simply
-    match no item, so the splice below can never produce a dead link.
-    `dashboards` now does have one — Dashboard Builder, ⚠️ prototype-only.
+    Modules with no route here (`trends`, `reports`, `decisions`) simply match
+    no item, so the splice below can never produce a dead link. `dashboards` was
+    on that list and is not any more — it now has two rows: Dashboard Builder
+    (⚠️ prototype-only) and Dashboard config (FR-DASH-02).
   */
   const modules = modulesFor(role, workflowEnabled);
   const roleKnown = actualRole !== null || isImpersonating;

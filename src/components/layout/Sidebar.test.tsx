@@ -102,7 +102,19 @@ describe("Sidebar", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows only administration to a session holding user:read", async () => {
+  /**
+   * ⚠️ Renamed and widened. It was called "shows only the user directory to a
+   * session holding user:read" and asserted exactly two links — so it was blind
+   * to what `dashboard:configure` also earns this session.
+   *
+   * There are now **two** dashboard rows, and both are deliberate: "Dashboard
+   * Builder" (`/admin/dashboard-builder`, prototype-parity, no BRD basis) and
+   * "Dashboard config" (`/dashboards`, **FR-DASH-02**). They are different
+   * screens that happen to share the `dashboards` module key, so the merge kept
+   * both rather than dropping either team's entry point. If they are ever
+   * consolidated, this is the assertion that will say so.
+   */
+  it("shows a super_user exactly the rows their permissions and modules allow", async () => {
     signInWith(["dashboard:configure", "user:read"], ["super_user"]);
 
     renderWithProviders(<Sidebar />);
@@ -111,8 +123,13 @@ describe("Sidebar", () => {
       await screen.findByRole("link", { name: "Administration" })
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: "Pending actions" })
-    ).not.toBeInTheDocument();
+      screen.getByRole("link", { name: "Dashboard config" })
+    ).toBeInTheDocument();
+
+    // The complete set, so an added row cannot slip past this assertion.
+    expect(
+      screen.getAllByRole("link").map((link) => link.textContent?.trim())
+    ).toEqual(["Administration", "Dashboard Builder", "Dashboard config"]);
   });
 
   /**

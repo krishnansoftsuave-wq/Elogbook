@@ -99,7 +99,15 @@ describe("the switcher's derived subtitle", () => {
     expect(groupSubtitle(ROLES.OPERATOR)).toBe("5 modules");
     expect(groupSubtitle(ROLES.SUPERVISOR)).toBe("5 types");
     expect(groupSubtitle(ROLES.MANAGEMENT)).toBe("4 types");
-    expect(groupSubtitle(ROLES.ADMINISTRATOR)).toBe("6 modules");
+    /*
+      Seven, not the prototype's six: `dashboards` was added to the
+      Administrator's module set because **FR-ADM-07** gives them widget
+      configuration and the route already admits them on the wildcard — without
+      it the sidebar's second, module-based filter dropped the row and
+      `/dashboards` had no link anywhere in the shell. The subtitle is derived
+      from that set, so the count moves with it.
+    */
+    expect(groupSubtitle(ROLES.ADMINISTRATOR)).toBe("7 modules");
     expect(groupSubtitle(ROLES.SUPER_USER)).toBe("5 modules");
   });
 });

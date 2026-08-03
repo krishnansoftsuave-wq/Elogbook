@@ -18,7 +18,10 @@ import type {
   DashboardVersionWire,
   LibraryWidgetWire,
 } from "@/features/dashboard-builder/schemas";
-import type { DashboardWidgetWire } from "@/features/dashboards/schemas";
+import type {
+  DashboardLayoutEntryWire,
+  DashboardWidgetWire,
+} from "@/features/dashboards/schemas";
 import type { DecisionWire } from "@/features/decisions/schemas";
 import type { NotificationWire } from "@/features/notifications/schemas";
 import type { RequestWire } from "@/features/requests/schemas";
@@ -101,6 +104,17 @@ export interface MockStoreData {
   dashboardVersions: DashboardVersionWire[];
   dashboardLibrary: LibraryWidgetWire[];
   /**
+   * **FR-DASH-05** — personalisation "does not affect the standard dashboard
+   * configured for other users". Keyed by username for exactly that reason:
+   * one user's saved layout is unreachable from another's request, which is a
+   * property of the shape rather than of the handler remembering to filter.
+   *
+   * Seeded empty. An absent entry means "no personalisation", which is the
+   * correct starting state — every user begins on their role's standard layout
+   * (FR-DASH-01) until they change it.
+   */
+  dashboardLayouts: Record<string, DashboardLayoutEntryWire[]>;
+  /**
    * FR-FB-01 capture. Seeded empty on purpose — feedback is a record of what a
    * real user thought, and fabricating a few thumbs-downs would put invented
    * opinions into a store whose whole job is to stand in for facts.
@@ -140,6 +154,7 @@ const buildSeed = (): MockStoreData => {
     dashboardConfigs: seedDashboardConfigs(base),
     dashboardVersions: seedDashboardVersions(base),
     dashboardLibrary: seedLibraryWidgets(),
+    dashboardLayouts: {},
     assistantFeedback: [],
     users: seedUsers(),
   };

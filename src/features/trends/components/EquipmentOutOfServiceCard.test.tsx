@@ -154,11 +154,22 @@ describe("EquipmentOutOfServiceCard", () => {
     const chart = screen.getByRole("img", {
       name: "Equipment out of service by area",
     });
-    const segments = [...chart.querySelectorAll("[title]")];
-    expect(segments[0]).toHaveClass("bg-chart-6");
-    expect(segments[1]).toHaveClass("bg-chart-7");
-    expect(segments[2]).toHaveClass("bg-chart-1");
-    expect(segments[3]).toHaveClass("bg-chart-7");
+    /*
+      ⚠️ Read off the rectangle `fill` rather than a `bg-chart-N` class.
+      `StackedBarChart` renders through Recharts now, so each bar is an SVG
+      path painted with the tone's custom property; the per-area colouring this
+      test exists for is unchanged, and `AREA_TONE` still drives it.
+    */
+    const fills = [...chart.querySelectorAll(".recharts-bar-rectangle path")]
+      .map((node) => node.getAttribute("fill"))
+      .filter(Boolean);
+
+    expect(fills).toEqual([
+      "var(--chart-6)",
+      "var(--chart-7)",
+      "var(--chart-1)",
+      "var(--chart-7)",
+    ]);
   });
 
   /**

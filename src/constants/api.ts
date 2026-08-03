@@ -134,6 +134,11 @@ export const API_ENDPOINTS = {
     /** §6 / FR-ADM-02 — base roles plus Administrator-created custom roles. */
     ROLES: "/admin/roles",
     ROLE: (id: string) => `/admin/roles/${id}`,
+    /**
+     * §7.11 / **FR-OBS-02**, **FR-OBS-04** — platform telemetry.
+     * **[BACKEND]**: provisional, and Administrator-only per §6.4.
+     */
+    MONITORING: "/admin/monitoring",
   },
 
   /** §7.11 / §9.3 — append-only. There is deliberately no update or delete. */
@@ -145,6 +150,37 @@ export const API_ENDPOINTS = {
   DASHBOARDS: {
     WIDGETS: "/dashboards/widgets",
     WIDGET: (id: string) => `/dashboards/widgets/${id}`,
+    /**
+     * §7.12 / **FR-DASH-04** — one user's own arrangement, deliberately under
+     * `/me` rather than `/dashboards`. There is no username parameter, so the
+     * shape itself makes **FR-DASH-05** ("does not affect … other users")
+     * unbreakable: the subject is always the bearer token.
+     */
+    MY_LAYOUT: "/me/dashboard-layout",
+  },
+
+  /**
+   * ⚠️ The prototype's plant-operations cards (`specKpiSection`, app-source.txt
+   * 751). **No BRD requirement covers these** — built at the owner's request
+   * for demonstration, from invented figures. See
+   * `features/plant-ops/schemas.ts`. **[BACKEND]**: no real source exists.
+   */
+  PLANT_OPERATIONS: {
+    SUMMARY: "/plant-operations",
+  },
+
+  /**
+   * ⚠️ The Super User dashboard's cards (`dashboard()` for `superuser`,
+   * app-source.txt 1133–1165). **No BRD requirement covers them** — §6.5
+   * describes the Super User's job, not their home screen.
+   *
+   * A sibling of `/admin/monitoring` rather than part of it: that endpoint is
+   * Administrator-only per §6.4, and widening it so a Super User's card could
+   * draw would have been an access decision made by a dashboard. See
+   * `features/platform/schemas.ts`. **[BACKEND]**: no real source exists.
+   */
+  PLATFORM: {
+    OVERVIEW: "/platform-overview",
   },
 
   /**

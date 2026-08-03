@@ -9,35 +9,42 @@ import { cn } from "@/lib/utils";
  * plainly: *"Charts have no accessible equivalent — SVG with no labels or table
  * fallback."* `.claude/rules/03` sets the bar at **WCAG 2.1 AA**, and a chart
  * that conveys information only through shape and colour fails 1.1.1
- * (non-text content) outright. Building the fallback once, here, is the only way
- * to guarantee no primitive ships without it — a per-chart convention would be
- * forgotten by the third one.
+ * (non-text content) outright.
+ *
+ * ## Why it survived the move to Recharts
+ *
+ * Recharts draws the chart now, so this file no longer owns an `<svg>`. What it
+ * still owns is the part **no chart library provides**: a real `<table>` of the
+ * underlying series. Recharts renders accessible-ish SVG, but a screen-reader
+ * user gets shapes, not numbers — so dropping this on the way to a library
+ * would have traded a WCAG requirement for a dependency. Keeping it means the
+ * accessibility contract is identical before and after the switch, which is why
+ * every test that asserted it still passes unchanged.
  *
  * Two things it guarantees:
  *
- * - **`role="img"` + `aria-label`** on the `<svg>`. `role="img"` makes the
+ * - **`role="img"` + `aria-label`** on the drawing. `role="img"` makes the
  *   element a leaf in the accessibility tree, so the label is announced and the
- *   dozens of `<rect>` and `<circle>` children inside it are not — which is why
- *   no `aria-hidden` is needed here, and why adding one would be wrong: it would
- *   remove the label along with the drawing.
+ *   dozens of shapes Recharts renders inside it are not — which is also what
+ *   stops a hover tooltip being announced as stray text.
  * - **A visually-hidden `<table>`** carrying the actual series. Screen-reader
  *   users get the numbers, not a summary of them — and because it is real
  *   markup rather than a longer `aria-label`, it is navigable cell by cell.
  *
- * Responsiveness comes from the `viewBox` + `h-auto w-full`: no primitive has a
- * pixel width, so all three engagement breakpoints (375 / 768 / 1440) are the
- * same code path rather than three.
- *
- * NFR-07 note: the drawing is LTR by construction (see `scale.ts`). The table
- * below is ordinary markup and mirrors correctly under `dir="rtl"` for free,
- * so the accessible path needs no RTL work when the Arabic layer lands.
+ * NFR-07 note: the table is ordinary markup and mirrors correctly under
+ * `dir="rtl"` for free. Recharts' own RTL support is partial and remains work
+ * owed when the Arabic layer lands — the library did not solve that for us.
  */
 
 export interface ChartDatum {
   /** Category name — the row header in the accessible table. */
   label: string;
-  /** The measured value. */
-  value: number;
+  /**
+   * The measured value, or `null` where the series has no reading for this
+   * label. `null` is not zero, and the table must not print it as one — see
+   * `valueAt` in `LineChart`.
+   */
+  value: number | null;
   /**
    * Formatted value for the table, when the raw number needs a unit or a
    * percentage alongside it. Falls back to `value`.
@@ -58,14 +65,11 @@ interface ChartFrameProps {
    * "Pending actions by status" rather than "Status".
    */
   label: string;
-  /** The `viewBox` width in user units — never a rendered pixel width. */
-  width: number;
-  height: number;
   /** One entry per series. A single-series chart passes an array of one. */
   series: readonly ChartSeries[];
   /** Header for the first column of the accessible table. */
   categoryHeader?: string;
-  /** The SVG content. Receives no props — geometry comes from `scale.ts`. */
+  /** The chart itself — a Recharts tree wrapped in `ChartContainer`. */
   children: ReactNode;
   className?: string;
 }
@@ -82,9 +86,15 @@ const categoriesOf = (series: readonly ChartSeries[]): string[] => {
   return [...seen];
 };
 
+/**
+ * An em dash for both kinds of absence — no datum at all, and a datum whose
+ * value is `null`. The second matters: printing `null` as "0" would make the
+ * accessible table state a reading that was never taken, which is the one thing
+ * this table exists to avoid.
+ */
 const cellFor = (series: ChartSeries, category: string): string => {
   const datum = series.data.find((candidate) => candidate.label === category);
-  if (!datum) return "—";
+  if (!datum || datum.value === null) return "—";
   return datum.display ?? String(datum.value);
 };
 
@@ -151,8 +161,6 @@ export const ChartDataTable = ({
 
 export const ChartFrame = ({
   label,
-  width,
-  height,
   series,
   categoryHeader = "Category",
   children,
@@ -162,19 +170,11 @@ export const ChartFrame = ({
     // A plain `div`, not a `figure`. A `figure` without a `figcaption` is an
     // unnamed group in the accessibility tree, so a screen reader announced
     // "figure", then the image's name, then the identical string again as the
-    // table's name. The labelled `role="img"` and the captioned table already
-    // carry every semantic the figure was adding.
+    // table's name.
     <div className={cn("w-full", className)}>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        // No width/height attributes: the viewBox plus these classes make the
-        // chart fluid, which is what "no fixed pixel widths" means in practice.
-        className="block h-auto w-full"
-        role="img"
-        aria-label={label}
-      >
+      <div role="img" aria-label={label}>
         {children}
-      </svg>
+      </div>
 
       <ChartDataTable
         label={label}

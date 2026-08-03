@@ -4,9 +4,11 @@
  * The prototype passes a hex per datum (`{label, value, color:'#0E8C81'}`,
  * app-source.txt 756). Three reasons that cannot cross over: `.claude/rules/01`
  * forbids a hardcoded colour in a component, a hex cannot respond to dark mode,
- * and `globals.css` already defines this exact ramp for both themes
- * (`--chart-1..5`, lines 117–121 and 201–205) precisely so charts do not need
- * their own palette.
+ * and `globals.css` already defines this exact ramp — `--chart-1` through
+ * `--chart-9`, once per theme — precisely so charts do not need their own
+ * palette. Every tone below must have an entry in both blocks *and* a
+ * `--color-chart-N` mapping in `@theme`, or its Tailwind class resolves to
+ * nothing and the series renders unpainted.
  *
  * The class maps are written out in full rather than built by interpolation
  * (`` `fill-${tone}` ``) because Tailwind scans source text: a class it never
@@ -14,6 +16,15 @@
  * unstyled.
  */
 
+/**
+ * 1–5 are the **categorical** ramp — the one `toneAt` walks for a series that
+ * has no meaning attached to its colour.
+ *
+ * 6 and 7 are deliberately **outside** that rotation, because they exist for
+ * ordered scales: a RAG breakdown needs a yellow between amber and green, and a
+ * neutral for "no date". Leaving them out of `CHART_TONES` keeps `toneAt` from
+ * handing a "no data" grey to the sixth series of an ordinary chart.
+ */
 export const CHART_TONES = [
   "chart-1",
   "chart-2",
@@ -44,33 +55,36 @@ export const CHART_TONES = [
   "chart-9",
 ] as const;
 
-export type ChartTone = (typeof CHART_TONES)[number];
+/**
+ * Tones outside the rotation. Assign these by meaning, never by position.
+ *
+ * 6 and 7 serve ordered scales (a RAG ramp needs a yellow between amber and
+ * green, and a neutral for "no date"). 8 and 9 exist because the production
+ * trend plots five measures at once and 1–5 has no blue and no purple — two of
+ * its lines would otherwise have reused a hue already carrying another measure.
+ */
+export const SCALE_TONES = [
+  "chart-6",
+  "chart-7",
+  "chart-8",
+  "chart-9",
+] as const;
 
-/** SVG `fill` — bars, wedges, any filled shape. */
-export const FILL_BY_TONE: Record<ChartTone, string> = {
-  "chart-1": "fill-chart-1",
-  "chart-2": "fill-chart-2",
-  "chart-3": "fill-chart-3",
-  "chart-4": "fill-chart-4",
-  "chart-5": "fill-chart-5",
-  "chart-6": "fill-chart-6",
-  "chart-7": "fill-chart-7",
-  "chart-8": "fill-chart-8",
-  "chart-9": "fill-chart-9",
-};
+export type ChartTone =
+  (typeof CHART_TONES)[number] | (typeof SCALE_TONES)[number];
 
-/** SVG `stroke` — the donut's ring segments. */
-export const STROKE_BY_TONE: Record<ChartTone, string> = {
-  "chart-1": "stroke-chart-1",
-  "chart-2": "stroke-chart-2",
-  "chart-3": "stroke-chart-3",
-  "chart-4": "stroke-chart-4",
-  "chart-5": "stroke-chart-5",
-  "chart-6": "stroke-chart-6",
-  "chart-7": "stroke-chart-7",
-  "chart-8": "stroke-chart-8",
-  "chart-9": "stroke-chart-9",
-};
+/*
+  ⚠️ `FILL_BY_TONE` and `STROKE_BY_TONE` used to live here, mapping each tone to
+  a `fill-chart-N` / `stroke-chart-N` class. Both were dead: the move to Recharts
+  means every chart hands the library a colour *string* (`VAR_BY_TONE`, or
+  `var(--color-<key>)` via `ChartContainer`) rather than a class on an SVG node,
+  and nothing had imported either map since. Neither `noUnusedLocals` nor ESLint
+  flags an unused *export*, so 18 dead entries would have kept accumulating —
+  including the four added when `--chart-8` and `--chart-9` landed.
+
+  `SWATCH_BY_TONE` below is genuinely live: the legend swatches are HTML, outside
+  the SVG, so they take a Tailwind class.
+*/
 
 /** HTML `background` — legend swatches, which sit outside the SVG. */
 export const SWATCH_BY_TONE: Record<ChartTone, string> = {
@@ -92,3 +106,43 @@ export const SWATCH_BY_TONE: Record<ChartTone, string> = {
  */
 export const toneAt = (index: number): ChartTone =>
   CHART_TONES[index % CHART_TONES.length] ?? "chart-1";
+
+/**
+ * The CSS variable behind a tone, for libraries that want a colour *string*
+ * rather than a class.
+ *
+ * Recharts takes `fill`/`stroke` as props and resolves them as CSS values, so
+ * `var(--chart-1)` works and keeps the light/dark switch where it belongs — in
+ * `globals.css`. This is the whole reason the switch to Recharts did not cost
+ * the theme: no component ever names a colour, exactly as `.claude/rules/01`
+ * requires.
+ */
+/**
+ * A CSS-identifier-safe key for a series, derived from its position.
+ *
+ * shadcn's `ChartContainer` emits one custom property per config key —
+ * `--color-<key>` — and Recharts is handed `var(--color-<key>)` as a fill. A
+ * key is therefore a **CSS identifier**, and a human series name is not: this
+ * chart's buckets are "Due ≤ 7 days" and "Due > 30 days", which produced
+ * `var(--color-Due ≤ 7 days)`. That is not a parse error, it is an *unresolved*
+ * variable, so every bar fell back to black and the chart looked broken rather
+ * than misconfigured.
+ *
+ * Index-based rather than a slug of the name: two buckets could slug to the
+ * same identifier, and a silent colour collision is harder to notice than a
+ * wrong one. The readable name still reaches the tooltip and legend through
+ * `config[key].label`.
+ */
+export const seriesKey = (index: number): string => `s${index}`;
+
+export const VAR_BY_TONE: Record<ChartTone, string> = {
+  "chart-1": "var(--chart-1)",
+  "chart-2": "var(--chart-2)",
+  "chart-3": "var(--chart-3)",
+  "chart-4": "var(--chart-4)",
+  "chart-5": "var(--chart-5)",
+  "chart-6": "var(--chart-6)",
+  "chart-7": "var(--chart-7)",
+  "chart-8": "var(--chart-8)",
+  "chart-9": "var(--chart-9)",
+};

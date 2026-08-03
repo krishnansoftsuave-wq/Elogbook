@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -190,12 +190,15 @@ export const RoleSwitcher = ({ collapsed }: RoleSwitcherProps) => {
                       {groupSubtitle(candidate)}
                     </span>
                   </span>
-                  {active ? (
-                    <Check
-                      className="size-4 shrink-0 text-primary"
-                      aria-hidden
-                    />
-                  ) : null}
+                  {/*
+                    No tick here. `DropdownMenuRadioItem` already renders one
+                    through `RadioItemIndicator`, positioned absolutely at
+                    `right-2`; a second inline one drew the selected row with
+                    two checkmarks side by side. The primitive's is the one to
+                    keep — it is driven by the radio group's own state rather
+                    than by a parallel `active` comparison that could disagree
+                    with it.
+                  */}
                 </DropdownMenuRadioItem>
               );
             })}
