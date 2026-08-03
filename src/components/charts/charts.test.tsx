@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -8,17 +8,24 @@ import { ChartFrame } from "@/components/charts/ChartFrame";
 import { ChartKindToggle } from "@/components/charts/ChartKindToggle";
 import { HorizontalStackedBarChart } from "@/components/charts/HorizontalStackedBarChart";
 import { KpiTrendCard } from "@/components/charts/KpiTrendCard";
+import { LineChart } from "@/components/charts/LineChart";
 import { PieChart } from "@/components/charts/PieChart";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { StackedBarChart } from "@/components/charts/StackedBarChart";
+import { CHART_TONES, SCALE_TONES } from "@/components/charts/tones";
 
 /**
  * The contract every chart primitive owes.
  *
  * `SCREENS.md` records the prototype's gap plainly — *"Charts have no
  * accessible equivalent — SVG with no labels or table fallback"* — and
- * `.claude/rules/03` sets the bar at WCAG 2.1 AA. These assertions are what
- * stop a future primitive shipping without closing it.
+ * `.claude/rules/03` sets the bar at WCAG 2.1 AA.
+ *
+ * **These assertions did not change when the charts moved to Recharts**, and
+ * that is the point of them. A chart library draws shapes; it does not publish
+ * the numbers behind them. Everything below is about the guarantee rather than
+ * the renderer, so it held across a complete change of implementation — which
+ * is exactly what a test of a contract should do.
  */
 
 const PIE_DATA = [
@@ -32,11 +39,9 @@ describe("ChartFrame", () => {
     render(
       <ChartFrame
         label="Pending actions by status"
-        width={100}
-        height={100}
         series={[{ name: "Actions", data: [{ label: "Open", value: 6 }] }]}
       >
-        <rect x={0} y={0} width={10} height={10} />
+        <svg />
       </ChartFrame>
     );
 
@@ -49,8 +54,6 @@ describe("ChartFrame", () => {
     render(
       <ChartFrame
         label="Pending actions by status"
-        width={100}
-        height={100}
         categoryHeader="Status"
         series={[
           {
@@ -62,62 +65,70 @@ describe("ChartFrame", () => {
           },
         ]}
       >
-        <rect x={0} y={0} width={10} height={10} />
+        <svg />
       </ChartFrame>
     );
 
     const table = screen.getByRole("table", {
       name: "Pending actions by status",
     });
-    expect(table).toBeInTheDocument();
-
     expect(
-      screen.getByRole("columnheader", { name: "Status" })
+      within(table).getByRole("columnheader", { name: "Status" })
     ).toBeInTheDocument();
-    expect(screen.getByRole("rowheader", { name: "Open" })).toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "6" })).toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "1" })).toBeInTheDocument();
+    expect(
+      within(table).getByRole("rowheader", { name: "Open" })
+    ).toBeInTheDocument();
+    expect(within(table).getByText("6")).toBeInTheDocument();
   });
 
-  /**
-   * `sr-only`, not `hidden`. A hidden element is removed from the accessibility
-   * tree, which would delete the very thing this exists to provide — so the
-   * table must remain queryable by role.
-   */
   it("keeps the table in the accessibility tree while hiding it visually", () => {
     render(
       <ChartFrame
         label="Chart"
-        width={10}
-        height={10}
         series={[{ name: "A", data: [{ label: "x", value: 1 }] }]}
       >
-        <rect x={0} y={0} width={1} height={1} />
+        <svg />
       </ChartFrame>
     );
 
     const table = screen.getByRole("table", { name: "Chart" });
-    expect(table).toHaveClass("sr-only");
+    expect(table.closest(".sr-only")).not.toBeNull();
     expect(table).not.toHaveAttribute("hidden");
     expect(table).not.toHaveAttribute("aria-hidden");
   });
 
-  it("scales by viewBox rather than a pixel width", () => {
+  /**
+   * The regression that produced the wrapper: at 1440 the fallback table laid
+   * out at its natural width and gave the page 96px of horizontal scroll.
+   * `.claude/rules/01` allows none at any breakpoint.
+   */
+  it("does not let the fallback table size the layout", () => {
     const { container } = render(
       <ChartFrame
         label="Chart"
-        width={640}
-        height={260}
-        series={[{ name: "A", data: [] }]}
+        series={[
+          {
+            name: "A very long series name that would widen a table",
+            data: [{ label: "An unusually long category label", value: 1 }],
+          },
+        ]}
       >
-        <rect x={0} y={0} width={1} height={1} />
+        <svg />
       </ChartFrame>
     );
 
-    const svg = container.querySelector("svg");
-    expect(svg).toHaveAttribute("viewBox", "0 0 640 260");
-    expect(svg).not.toHaveAttribute("width");
-    expect(svg).not.toHaveAttribute("height");
+    /*
+      ⚠️ The mechanism changed, the claim did not. This used to require a
+      wrapping `<div class="sr-only">`, because `sr-only`'s 1px width is a
+      *minimum* for a table and the untamed table gave the page 96px of
+      horizontal scroll at 1440. `ChartDataTable` now solves it on the table
+      itself with `table-fixed`, which makes the 1px bind for real — a better
+      fix, and one that survives the table being rendered outside `ChartFrame`
+      by the two HTML charts that reuse it.
+    */
+    const clipped = container.querySelector(".sr-only");
+    expect(clipped?.tagName.toLowerCase()).toBe("table");
+    expect(clipped).toHaveClass("table-fixed");
   });
 
   /**
@@ -134,8 +145,6 @@ describe("ChartFrame", () => {
     render(
       <ChartFrame
         label="Chart"
-        width={10}
-        height={10}
         series={[{ name: "A", data: [{ label: "x", value: 1 }] }]}
       >
         <rect x={0} y={0} width={1} height={1} />
@@ -151,30 +160,38 @@ describe("ChartFrame", () => {
     render(
       <ChartFrame
         label="Chart"
-        width={10}
-        height={10}
         series={[
-          { name: "A", data: [{ label: "one", value: 1 }] },
-          { name: "B", data: [{ label: "two", value: 2 }] },
+          { name: "A", data: [{ label: "x", value: 1 }] },
+          { name: "B", data: [{ label: "y", value: 2 }] },
         ]}
       >
-        <rect x={0} y={0} width={1} height={1} />
+        <svg />
       </ChartFrame>
     );
 
-    expect(screen.getAllByRole("cell", { name: "—" })).toHaveLength(2);
+    expect(screen.getAllByText("—")).toHaveLength(2);
   });
 });
 
 describe("PieChart", () => {
   it("labels the chart and tabulates every slice with its share", () => {
-    render(<PieChart label="Pending actions by status" data={PIE_DATA} />);
+    render(
+      <PieChart
+        label="Pending actions by status"
+        categoryHeader="Status"
+        data={PIE_DATA}
+      />
+    );
 
     expect(
       screen.getByRole("img", { name: "Pending actions by status" })
     ).toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "6 (60%)" })).toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "3 (30%)" })).toBeInTheDocument();
+
+    const table = screen.getByRole("table", {
+      name: "Pending actions by status",
+    });
+    expect(within(table).getByText("6 (60%)")).toBeInTheDocument();
+    expect(within(table).getByText("3 (30%)")).toBeInTheDocument();
   });
 
   it("defaults the centre readout to the total", () => {
@@ -182,112 +199,138 @@ describe("PieChart", () => {
     expect(screen.getByText("10")).toBeInTheDocument();
   });
 
-  it("renders an empty ring rather than nothing for an all-zero series", () => {
-    const { container } = render(
+  /** "No data" and "chart failed to render" must not look identical. */
+  it("still labels an all-zero series rather than rendering nothing", () => {
+    render(
       <PieChart
         label="Chart"
-        data={[{ label: "Open", value: 0, tone: "chart-1" }]}
+        data={[
+          { label: "Open", value: 0, tone: "chart-1" },
+          { label: "Closed", value: 0, tone: "chart-2" },
+        ]}
       />
     );
 
-    // "no data" and "failed to render" must not look identical.
-    expect(container.querySelector(".stroke-border")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Chart" })).toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "Chart" });
+    expect(within(table).getAllByText("0 (0%)")).toHaveLength(2);
+  });
+
+  it("hides the centre readout from assistive technology", () => {
+    const { container } = render(<PieChart label="Chart" data={PIE_DATA} />);
+    expect(container.querySelector("[aria-hidden]")).not.toBeNull();
   });
 
   /**
-   * The centre number duplicates what ChartFrame's table already reports, so it
-   * must not be announced again.
-   *
-   * Asserted through the *specific* node: an earlier version queried
-   * `[aria-hidden]` generally and passed even with the attribute removed,
-   * because the legend swatches also match. A test that cannot fail is worse
-   * than no test.
+   * The prototype's highlight (`iPie` hover state): the centre readout swaps
+   * from the total to the hovered slice. It is why this donut has no floating
+   * tooltip — the middle of the chart is already a place to put the number.
    */
-  it("hides the centre readout from assistive technology", () => {
-    render(<PieChart label="Chart" data={PIE_DATA} />);
+  it("swaps the centre readout to the slice under the pointer", async () => {
+    const { container } = render(
+      <PieChart label="Chart" data={PIE_DATA} centerLabel="items by status" />
+    );
 
-    const readout = screen.getByText("10");
-    expect(readout.closest("[aria-hidden]")).not.toBeNull();
+    /*
+      Scoped to the centre, not the whole card: the slice's name is deliberately
+      in two places once it is highlighted — the legend row and the readout —
+      so an unscoped `getByText` finds both and fails on the ambiguity that the
+      feature creates.
+    */
+    const centre = container.querySelector('[data-slot="chart-center"]');
+    expect(centre).toHaveTextContent("10");
+    expect(centre).toHaveTextContent("items by status");
+
+    await userEvent.hover(screen.getByRole("button", { name: /In Progress/ }));
+
+    expect(centre).toHaveTextContent("3");
+    expect(centre).toHaveTextContent("In Progress");
+    expect(centre).not.toHaveTextContent("items by status");
+  });
+
+  /**
+   * The prototype highlights on `mouseenter` only, so a keyboard user never
+   * sees it. Each legend row is a real button here, so focus does the same.
+   */
+  it("gives the highlight a keyboard path", () => {
+    const { container } = render(
+      <PieChart label="Chart" data={PIE_DATA} centerLabel="items in total" />
+    );
+    const centre = container.querySelector('[data-slot="chart-center"]');
+
+    const row = screen.getByRole("button", { name: /On Hold/ });
+    expect(row).toHaveAttribute("type", "button");
+
+    /*
+      `focusIn`, not `focus`. React attaches `onFocus` to the bubbling `focusin`
+      event, so a dispatched `focus` never reaches the handler and the assertion
+      reads the pre-focus render. `row.focus()` first, so `toHaveFocus` is
+      asserting real DOM focus rather than the synthetic event.
+    */
+    row.focus();
+    fireEvent.focusIn(row);
+
+    expect(row).toHaveFocus();
+    expect(centre).toHaveTextContent("On Hold");
+    expect(centre).not.toHaveTextContent("items in total");
   });
 });
 
 describe("StackedBarChart", () => {
   const BUCKETS = [
-    { name: "Overdue", tone: "chart-5" },
-    { name: "Due soon", tone: "chart-3" },
-  ] as const;
-
+    { name: "Overdue", tone: "chart-5" as const },
+    { name: "Due soon", tone: "chart-3" as const },
+  ];
   const CATEGORIES = [
     { label: "B-train", values: [2, 3] },
-    { label: "Unit 3", values: [1, 4] },
+    { label: "Unit 3", values: [0, 1] },
   ];
 
   it("tabulates as a crosstab — a row per category, a column per bucket", () => {
     render(
       <StackedBarChart
-        label="Open actions by area"
+        label="Open items by area and due date"
+        categoryHeader="Area"
         buckets={BUCKETS}
         categories={CATEGORIES}
       />
     );
 
+    const table = screen.getByRole("table", {
+      name: "Open items by area and due date",
+    });
     expect(
-      screen.getByRole("img", { name: "Open actions by area" })
+      within(table).getByRole("columnheader", { name: "Overdue" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("columnheader", { name: "Overdue" })
+      within(table).getByRole("columnheader", { name: "Due soon" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("rowheader", { name: "B-train" })
+      within(table).getByRole("rowheader", { name: "B-train" })
     ).toBeInTheDocument();
-  });
-
-  it("renders one segment per non-zero bucket", () => {
-    const { container } = render(
-      <StackedBarChart
-        label="Chart"
-        buckets={BUCKETS}
-        categories={[{ label: "B-train", values: [2, 0] }]}
-      />
-    );
-
-    expect(container.querySelectorAll("[title]")).toHaveLength(1);
-    expect(container.querySelector("[title]")).toHaveAttribute(
-      "title",
-      "Overdue: 2"
-    );
   });
 
   /**
-   * The structural fix this chart exists in its current form for: an
-   * `<svg viewBox>` with `w-full` scales its contents by
-   * `container_width / viewBox_width`, so a 12px label was 12 *user units* and
-   * rendered at a different size in every container. Boxes have no such layer.
+   * A category short of values must not shift the stack — the defect the
+   * normalisation in `valueAt` exists to prevent.
    */
-  it("draws with no scaling layer, so declared sizes are real pixels", () => {
-    const { container } = render(
+  it("treats a missing value as zero", () => {
+    render(
       <StackedBarChart
         label="Chart"
         buckets={BUCKETS}
-        categories={CATEGORIES}
+        categories={[{ label: "B-train", values: [2] }]}
       />
     );
 
-    expect(container.querySelector("svg")).toBeNull();
-    expect(
-      container.querySelector("[data-slot='chart-columns']")
-    ).not.toBeNull();
+    const table = screen.getByRole("table", { name: "Chart" });
+    const row = within(table).getByRole("row", { name: /B-train/ });
+    expect(within(row).getByText("0")).toBeInTheDocument();
   });
 
-  /**
-   * The prototype hangs its drill-down on a `<div>` click handler
-   * (app-source.txt 536), which no keyboard can reach. This is the regression
-   * guard for that.
-   */
+  /** Recharts' bar `onClick` is mouse-only; this is the reachable path. */
   it("exposes the drill-down as keyboard-reachable buttons", async () => {
     const onSelect = vi.fn();
-    const user = userEvent.setup();
-
     render(
       <StackedBarChart
         label="Chart"
@@ -300,8 +343,10 @@ describe("StackedBarChart", () => {
     const button = screen.getByRole("button", { name: /B-train/ });
     expect(button).toHaveAttribute("type", "button");
 
-    await user.click(button);
-    expect(onSelect).toHaveBeenCalledWith(CATEGORIES[0]);
+    await userEvent.click(button);
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ label: "B-train" })
+    );
   });
 
   it("renders no drill-down affordance when none is offered", () => {
@@ -312,12 +357,11 @@ describe("StackedBarChart", () => {
         categories={CATEGORIES}
       />
     );
-
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
-  it("survives an all-zero column without emitting NaN geometry", () => {
-    const { container } = render(
+  it("survives an all-zero column", () => {
+    render(
       <StackedBarChart
         label="Chart"
         buckets={BUCKETS}
@@ -325,11 +369,80 @@ describe("StackedBarChart", () => {
       />
     );
 
-    for (const element of container.querySelectorAll("*")) {
-      expect(element.className.toString()).not.toContain("NaN");
+    const table = screen.getByRole("table", { name: "Chart" });
+    expect(within(table).getAllByText("0")).toHaveLength(2);
+  });
+
+  /**
+   * The defect this pins shipped twice, and both times it looked like a chart
+   * that had simply lost some numbers.
+   *
+   * Recharts draws no rectangle for a zero-value segment and renumbers the ones
+   * that survive. So a `LabelList` on the topmost *bucket* loses the total of
+   * every column whose top bucket is 0, and deciding the bearer from the index
+   * Recharts hands the label picks out the wrong column instead. On the safety
+   * chart three of seven columns went unlabelled, 18 and 21 among them.
+   *
+   * Asserted inside `role="img"`, not on the page: the accessible table repeats
+   * these figures as cell values, and scoping to the drawing is what stops a
+   * table cell standing in for a total that was never drawn.
+   */
+  it("prints one total per column, including where the top bucket is empty", () => {
+    render(
+      <StackedBarChart
+        label="Chart"
+        buckets={BUCKETS}
+        categories={[
+          { label: "B-train", values: [2, 3] },
+          { label: "Unit 3", values: [7, 0] },
+        ]}
+      />
+    );
+
+    const drawing = screen.getByRole("img", { name: "Chart" });
+
+    /*
+      Exactly one, not merely present. Every bar carries a `LabelList`, so a
+      bearer test that let more than one bar through would stack two identical
+      totals on this column — both of its buckets are drawn.
+    */
+    expect(within(drawing).getAllByText("5")).toHaveLength(1);
+    // The regression: bucket 1 is 0 here, so the bearer must fall to bucket 0.
+    expect(within(drawing).getAllByText("7")).toHaveLength(1);
+  });
+});
+
+describe("LineChart", () => {
+  const X = ["Mon", "Tue", "Wed"];
+  const SERIES = [
+    { name: "Entries", tone: "chart-1" as const, points: [4, 9, 6] },
+  ];
+
+  it("exposes the drawing as one labelled image", () => {
+    render(
+      <LineChart label="Entries over the week" xLabels={X} series={SERIES} />
+    );
+    expect(
+      screen.getByRole("img", { name: "Entries over the week" })
+    ).toBeInTheDocument();
+  });
+
+  it("publishes every point in the accessible table", () => {
+    render(
+      <LineChart
+        label="Entries over the week"
+        xLabels={X}
+        series={SERIES}
+        categoryHeader="Day"
+      />
+    );
+
+    const table = screen.getByRole("table", { name: "Entries over the week" });
+    for (const day of X) {
+      expect(
+        within(table).getByRole("rowheader", { name: day })
+      ).toBeInTheDocument();
     }
-    // No value means no segment to draw — an empty track, not a zero-width one.
-    expect(container.querySelectorAll("[title]")).toHaveLength(0);
   });
 
   /** `iBar`'s own call passes `unit:'items'` (app-source.txt 1946); default stays bare. */
@@ -355,9 +468,16 @@ describe("StackedBarChart", () => {
       />
     );
 
-    // Scoped to the drawn column, not the accessible table's own "3" cell.
-    const columns = container.querySelector("[data-slot='chart-columns']");
-    expect(columns?.querySelector("span")?.textContent).toBe("3");
+    /*
+      Scoped to the drawn label, not the accessible table's own "3" cell. The
+      label is an SVG `<text>` now rather than a `<span>` in a flexbox column,
+      so the query moved with the implementation; the claim — a bare number
+      unless a unit was asked for — is unchanged.
+    */
+    const drawn = [...container.querySelectorAll("svg text")].map((node) =>
+      node.textContent?.trim()
+    );
+    expect(drawn).toContain("3");
     expect(screen.queryByText("3 items")).not.toBeInTheDocument();
   });
 
@@ -368,11 +488,18 @@ describe("StackedBarChart", () => {
    * shows.
    */
   it("hides the legend when showLegend is false", () => {
+    // Local, because this `StackedBarChart` case sits outside that describe's
+    // shared fixture.
+    const categories = [
+      { label: "B-train", values: [2] },
+      { label: "Unit 3", values: [1] },
+    ];
+
     const { container } = render(
       <StackedBarChart
         label="Chart"
         buckets={[{ name: "Out of service", tone: "chart-1" }]}
-        categories={CATEGORIES}
+        categories={categories}
         showLegend={false}
       />
     );
@@ -400,9 +527,20 @@ describe("StackedBarChart", () => {
       />
     );
 
-    const segments = container.querySelectorAll("[title]");
-    expect(segments[0]).toHaveClass("bg-chart-6");
-    expect(segments[1]).toHaveClass("bg-chart-7");
+    /*
+      Recharts paints the rectangle's `fill` rather than putting a Tailwind
+      background class on a `<div>`, so the override is read off the fill. Same
+      claim: each category draws in its own tone, not the bucket's `chart-1`.
+    */
+    const fills = [
+      ...container.querySelectorAll(".recharts-bar-rectangle path"),
+    ]
+      .map((node) => node.getAttribute("fill"))
+      .filter(Boolean);
+
+    expect(fills).toContain("var(--chart-6)");
+    expect(fills).toContain("var(--chart-7)");
+    expect(fills).not.toContain("var(--color-s0)");
   });
 
   /**
@@ -422,41 +560,57 @@ describe("StackedBarChart", () => {
       />
     );
 
-    const bars = [...container.querySelectorAll("[title]")].map(
-      (segment) => segment.parentElement
-    );
-    // An absolute `h-N` height, not a percentage `flex-basis` — the bar's
-    // column has no height of its own to be a percentage of (see the file
-    // docblock). `h-27` (108px) vs `h-5` (20px) — 10/11.2 and 2/11.2 of
-    // `PLOT_HEIGHT`'s 30 steps.
-    expect(bars[0]?.className).toContain("h-27");
-    expect(bars[1]?.className).toContain("h-5");
-    // Genuinely two different heights, not the same class twice.
-    expect(bars[0]?.className).not.toContain("h-5 ");
+    /*
+      Read off the drawn geometry rather than a Tailwind height class: Recharts
+      sizes each rectangle in the SVG, so `h-27`/`h-5` no longer exist. The
+      claim is the one that matters either way — 10 draws visibly taller than 2.
+    */
+    /*
+      The `M x,y` that opens each rectangle's path is its top-left corner. Both
+      columns share a baseline, so the taller one starts higher — a smaller `y`.
+      Read from the path rather than a Tailwind `h-N` class, which the flexbox
+      version used and Recharts does not emit.
+    */
+    const tops = [
+      ...container.querySelectorAll(".recharts-bar-rectangle path"),
+    ].map((node) => {
+      const start = /^M\s*(-?[\d.]+)[, ]\s*(-?[\d.]+)/.exec(
+        node.getAttribute("d") ?? ""
+      );
+      return Number(start?.[2]);
+    });
+
+    expect(tops).toHaveLength(2);
+    expect(tops[0]).toBeLessThan(tops[1] ?? 0);
   });
 
   /**
-   * The structural bug this geometry exists to fix: a `flex-1` "well" inside
-   * an `h-full` column absorbed all vertical slack regardless of the bar's
-   * own height, so every value label sat at the same fixed height instead of
-   * directly above its own bar. Pinned by asserting the column has no
-   * explicit height and the bar's height class is absolute, not relative.
+   * The claim the flexbox version pinned through `h-full`/`basis-[…]` classes:
+   * **each column's value label sits above that column's own bar**, not at one
+   * shared height. Recharts positions the label from the rendered rectangle
+   * (`TotalLabel` takes `y` from the bar), so the assertion is now the thing
+   * itself — two different column heights must produce two different label
+   * heights.
    */
-  it("lets the column shrink-wrap so its label sits above its own bar", () => {
+  it("puts each column's label above its own bar, not at a shared height", () => {
     const { container } = render(
       <StackedBarChart
         label="Chart"
         buckets={[{ name: "Out of service", tone: "chart-1" }]}
-        categories={[{ label: "Solo", values: [5] }]}
+        categories={[
+          { label: "Tall", values: [10] },
+          { label: "Short", values: [2] },
+        ]}
       />
     );
 
-    const column = container.querySelector("[data-slot='chart-columns'] > div");
-    expect(column?.className).not.toContain("h-full");
+    const labelYs = [...container.querySelectorAll("svg text")]
+      .filter((node) => ["10", "2"].includes(node.textContent?.trim() ?? ""))
+      .map((node) => Number(node.getAttribute("y")));
 
-    const bar = container.querySelector("[title]")?.parentElement;
-    expect(bar?.className).toMatch(/\bh-\d+\b/);
-    expect(bar?.className).not.toMatch(/basis-\[/);
+    expect(labelYs).toHaveLength(2);
+    // Lower `y` is higher on screen: the taller column's label sits above.
+    expect(labelYs[0]).toBeLessThan(labelYs[1] ?? 0);
   });
 });
 
@@ -475,11 +629,17 @@ describe("Sparkline", () => {
     expect(screen.getByRole("cell", { name: "42" })).toBeInTheDocument();
   });
 
+  // Recharts draws each bar as a `<path>`, not a `<rect>`.
   it("draws one bar per value", () => {
     const { container } = render(
       <Sparkline label="Chart" values={VALUES} tone="chart-1" />
     );
-    expect(container.querySelectorAll("rect")).toHaveLength(VALUES.length);
+    // One rectangle group per reading. Recharts wraps each bar in its own
+    // `recharts-bar-rectangle` layer, which is the countable unit here — the
+    // flexbox version counted `<rect>` elements that no longer exist.
+    expect(container.querySelectorAll(".recharts-bar-rectangle")).toHaveLength(
+      VALUES.length
+    );
   });
 
   /**
@@ -827,24 +987,95 @@ describe("HorizontalStackedBarChart", () => {
     expect(container.querySelector(".bg-muted")).not.toBeNull();
     expect(container.querySelectorAll("[title]")).toHaveLength(0);
   });
+
+  it("appends the unit to each printed value", () => {
+    render(
+      <LineChart
+        label="Response time"
+        xLabels={["T-1"]}
+        series={[{ name: "API", tone: "chart-2", points: [120] }]}
+        unit="ms"
+      />
+    );
+
+    expect(screen.getByText("120 ms")).toBeInTheDocument();
+  });
+
+  /**
+   * ⚠️ **This assertion was inverted, deliberately.** It previously required a
+   * series shorter than the axis to read as `0` — "treats a series shorter than
+   * the axis as zero, not as a gap in the table" — which pinned a real defect
+   * rather than a decision.
+   *
+   * Nothing enforces that a series has one point per label:
+   * `plantOperationsWireSchema` declares `production_days` and `points` as
+   * independent arrays. So a Flare series with five of seven days drew a plunge
+   * to zero across the weekend and announced "0 t/d". A flare rate of zero is an
+   * operational event and must not be indistinguishable from a reading nobody
+   * took — which is exactly what `connectNulls={false}` and `LineChart`'s own
+   * "a gap in a series is a gap" docblock already promised.
+   */
+  it("shows a missing point as a gap, not as zero", () => {
+    // Local, because this `LineChart` case sits outside that describe's fixture.
+    const xLabels = ["Mon", "Tue", "Wed"];
+
+    render(
+      <LineChart
+        label="Chart"
+        xLabels={xLabels}
+        series={[{ name: "Entries", tone: "chart-1", points: [4] }]}
+      />
+    );
+
+    const table = screen.getByRole("table", { name: "Chart" });
+    expect(within(table).queryByText("0")).not.toBeInTheDocument();
+    // One em dash per label the series has no reading for.
+    expect(within(table).getAllByText("—")).toHaveLength(xLabels.length - 1);
+  });
+});
+
+describe("Sparkline", () => {
+  const VALUES = [3, 5, 4, 8];
+
+  it("carries the trend in an accessible table, not sighted-only", () => {
+    render(
+      <Sparkline label="Active users over the last hour" values={VALUES} />
+    );
+
+    const table = screen.getByRole("table", {
+      name: "Active users over the last hour",
+    });
+    expect(
+      within(table).getByRole("rowheader", { name: "Reading 1" })
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByRole("rowheader", { name: "Reading 4" })
+    ).toBeInTheDocument();
+  });
+
+  it("uses supplied point labels when given", () => {
+    render(
+      <Sparkline
+        label="Active users over the last hour"
+        values={[1, 2]}
+        pointLabels={["12:00", "12:15"]}
+      />
+    );
+
+    const table = screen.getByRole("table");
+    expect(
+      within(table).getByRole("rowheader", { name: "12:00" })
+    ).toBeInTheDocument();
+  });
 });
 
 describe("ChartKindToggle", () => {
   it("announces which kind is active rather than showing it in colour alone", async () => {
     const onChange = vi.fn();
-    const user = userEvent.setup();
-
     render(
-      <ChartKindToggle
-        label="Chart type for pending actions"
-        value="bar"
-        onChange={onChange}
-      />
+      <ChartKindToggle label="Chart type" value="bar" onChange={onChange} />
     );
 
-    expect(
-      screen.getByRole("group", { name: "Chart type for pending actions" })
-    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Bar" })).toHaveAttribute(
       "aria-pressed",
       "true"
@@ -854,7 +1085,7 @@ describe("ChartKindToggle", () => {
       "false"
     );
 
-    await user.click(screen.getByRole("button", { name: "Pie" }));
+    await userEvent.click(screen.getByRole("button", { name: "Pie" }));
     expect(onChange).toHaveBeenCalledWith("pie");
   });
 
@@ -872,8 +1103,12 @@ describe("ChartKindToggle", () => {
 
 describe("chart source hygiene", () => {
   /**
-   * `.claude/rules/01`: no hardcoded colour in a component. The prototype passes
-   * a hex per datum; this asserts none of that survived the port.
+   * `.claude/rules/01`: no hardcoded colour in a component.
+   *
+   * **This is the assertion that made the Recharts port safe.** A chart library
+   * wants colour as a *string*, which is the usual route back to hex literals;
+   * tones resolve to `var(--chart-*)` instead, so light and dark still live in
+   * `globals.css` and no component names a colour.
    */
   it("contains no hardcoded colour anywhere under components/charts", () => {
     const directory = join(process.cwd(), "src", "components", "charts");
@@ -897,10 +1132,8 @@ describe("chart source hygiene", () => {
   });
 
   /**
-   * `.claude/rules/01`: mobile-first, "never a fixed `w-[400px]`". jsdom cannot
-   * measure layout, so this is the structural proxy — a chart with no pixel
-   * width and a `viewBox` is fluid by construction at 375 / 768 / 1440, and a
-   * pixel width is the one thing that would break that silently.
+   * `.claude/rules/01`: mobile-first, "never a fixed `w-[400px]`". Recharts
+   * measures its container, so a pixel width here would defeat that too.
    */
   it("declares no fixed pixel width or height", () => {
     const directory = join(process.cwd(), "src", "components", "charts");
@@ -922,5 +1155,55 @@ describe("chart source hygiene", () => {
     }
 
     expect(offenders).toEqual([]);
+  });
+
+  /**
+   * Every tone must be backed by a real token, in both themes.
+   *
+   * The failure this catches is silent by construction. `FILL_BY_TONE` hands out
+   * `fill-chart-8`; if `--chart-8` or its `@theme` mapping is missing, that is
+   * not an error anywhere — it is an unresolved custom property, so the series
+   * renders **unpainted** and the chart merely looks wrong. Nothing in the type
+   * system can see it: `ChartTone` constrains the map keys, and the CSS is a
+   * separate file that TypeScript never reads.
+   *
+   * Adding a tone therefore takes four edits — `SCALE_TONES`, the light block,
+   * the dark block, and the `@theme` mapping — and this is what refuses the
+   * commit that does three of them. A docblock asking for all four is what this
+   * replaced; that request was already stale once.
+   */
+  it("backs every chart tone with a token in both themes", () => {
+    const css = readFileSync(
+      join(process.cwd(), "src", "app", "globals.css"),
+      "utf8"
+    );
+
+    /*
+      Split at the `.dark {` block so "defined twice" cannot be satisfied by one
+      block listing a tone twice. Anything before it is the light theme (`:root`
+      plus `@theme`); anything after is the dark override.
+
+      `.dark {` rather than `.dark`: the first `.dark` in the file belongs to
+      `@custom-variant dark (&:is(.dark *))` on line 5, which put the split above
+      every declaration in the file and reported all nine tones missing from both
+      themes — a test failing for a reason that has nothing to do with the tokens.
+    */
+    const darkAt = css.indexOf(".dark {");
+    expect(darkAt).toBeGreaterThan(-1);
+    const light = css.slice(0, darkAt);
+    const dark = css.slice(darkAt);
+
+    const missing: string[] = [];
+    for (const tone of [...CHART_TONES, ...SCALE_TONES]) {
+      const variable = `--${tone}:`;
+      if (!light.includes(variable)) missing.push(`${tone} (light)`);
+      if (!dark.includes(variable)) missing.push(`${tone} (dark)`);
+      // Without this, the Tailwind utility never generates.
+      if (!light.includes(`--color-${tone}:`)) {
+        missing.push(`${tone} (@theme mapping)`);
+      }
+    }
+
+    expect(missing).toEqual([]);
   });
 });

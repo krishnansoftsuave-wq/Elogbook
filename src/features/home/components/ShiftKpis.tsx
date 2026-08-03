@@ -1,9 +1,12 @@
 "use client";
 
-import { CircleCheck, Clock, ListChecks, TriangleAlert } from "lucide-react";
+import { ChartPie } from "lucide-react";
+import { useId } from "react";
 
-import { StatTile } from "@/components/StatTile";
+import { Notice } from "@/components/Notice";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useActionStatusCounts } from "@/features/actions/api/queries";
+import { MetricTile } from "@/features/monitoring/components/MetricTile";
 
 /** Marks a tile whose number is a floor rather than a total. */
 const CAPPED_HINT = "Partial count";
@@ -26,63 +29,103 @@ const CAPPED_HINT = "Partial count";
  * suggest the number was a floor. A JSDoc warns the next developer; it does not
  * warn the operator making a handover decision.
  *
- * The group is a **named region**. Four bare numbers with no collective label
- * are hard to place when a screen reader reaches them out of visual context, and
- * the status words they use ("Open", "Verified") also appear in the donut's
- * legend beside them — so without a name, neither a reader nor a test can tell
- * which "Open" is which.
+ * ## Two changes made by comparing against the running prototype
+ *
+ * **The tiles are inside a card.** Every other widget on the dashboard draws its
+ * own card, and this one did not — so on the Super User's screen a row of four
+ * bare tiles sat between two titled cards, reading as page furniture rather than
+ * as the widget it is. `widgetBody`'s `'kpi'` case (306) is a titled card
+ * containing the grid, and the card is also what makes FR-DASH-04's hide and
+ * resize controls land on something coherent.
+ *
+ * **The tiles no longer carry icons.** The prototype's KPI tile is label,
+ * number, caption and nothing else (306–309). The icons here were chosen by feel
+ * — a `TriangleAlert` for overdue, a `CircleCheck` for verified — and they
+ * repeated in colour what the number's own tone already says. `MetricTile` is
+ * the prototype's tile shape, already used by every figure on the monitoring
+ * board, so this widget uses it instead of a private near-copy.
+ *
+ * The group keeps its **accessible name**, now from the card's own heading via
+ * `aria-labelledby` rather than a second `aria-label` saying the same words.
  */
 export const ShiftKpis = () => {
-  const { data, isLoading } = useActionStatusCounts();
+  const { data, isLoading, isError } = useActionStatusCounts();
+  const titleId = useId();
 
   const value = (count: number | undefined): string =>
     count === undefined ? "—" : String(count);
 
   const isCapped = data !== undefined && data.counted < data.total;
+  const capped = isCapped ? CAPPED_HINT : undefined;
 
   return (
-    <section
-      aria-label="Shift KPIs"
-      className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
-    >
-      <StatTile
-        label="Open"
-        value={value(data?.byStatus.open)}
-        icon={ListChecks}
-        hint={isCapped ? CAPPED_HINT : undefined}
-        isLoading={isLoading}
-      />
-      <StatTile
-        label="In progress"
-        value={value(data?.byStatus.in_progress)}
-        icon={Clock}
-        tone="text-info"
-        hint={isCapped ? CAPPED_HINT : undefined}
-        isLoading={isLoading}
-      />
-      <StatTile
-        label="Overdue"
-        value={value(data?.overdue)}
-        icon={TriangleAlert}
-        tone="text-destructive"
-        hint={isCapped ? CAPPED_HINT : "Past due and not closed"}
-        isLoading={isLoading}
-      />
-      <StatTile
-        label="Verified"
-        value={value(data?.byStatus.verified)}
-        icon={CircleCheck}
-        tone="text-success"
-        hint={isCapped ? CAPPED_HINT : undefined}
-        isLoading={isLoading}
-      />
+    /*
+      A named region, via the card's own heading rather than a duplicate
+      `aria-label`. `Card` renders a plain `div`, so without the role the four
+      numbers are ungrouped for a screen reader — and "Open" and "Verified" also
+      appear in the pending-actions donut's legend, so an unnamed group leaves no
+      way to tell which "Open" is which.
+    */
+    <Card className="min-w-0" role="region" aria-labelledby={titleId}>
+      <CardHeader>
+        <CardTitle id={titleId} className="flex items-center gap-2">
+          {/* `donut_small` — `widgetIcon('kpi')` (1166). */}
+          <ChartPie className="size-5 text-primary" aria-hidden />
+          Shift KPIs
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {/*
+          Without this the widget renders four tiles reading "—" and looks
+          loaded. `value()` maps `undefined` to an em dash and `isCapped` is
+          false when there is no data, so a 500 from `/actions` produced a
+          fully-formed card with no error, no retry and nothing announced —
+          which an operator starting a handover reads as "nothing is open".
+          Every sibling on this screen already shows a `Notice` instead.
+        */}
+        {isError ? (
+          <Notice live>
+            Shift KPIs could not be loaded. Reload to try again.
+          </Notice>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricTile
+              label="Open"
+              value={value(data?.byStatus.open)}
+              caption={capped}
+              isLoading={isLoading}
+            />
+            <MetricTile
+              label="In progress"
+              value={value(data?.byStatus.in_progress)}
+              tone="brand"
+              caption={capped}
+              isLoading={isLoading}
+            />
+            <MetricTile
+              label="Overdue"
+              value={value(data?.overdue)}
+              tone="critical"
+              caption={capped ?? "Past due and not closed"}
+              isLoading={isLoading}
+            />
+            <MetricTile
+              label="Verified"
+              value={value(data?.byStatus.verified)}
+              tone="success"
+              caption={capped}
+              isLoading={isLoading}
+            />
 
-      {isCapped ? (
-        <p className="col-span-full text-xs text-muted-foreground">
-          Counts cover the {data.counted} most recent of {data.total} actions.
-          Open the pending-actions list for the full set.
-        </p>
-      ) : null}
-    </section>
+            {isCapped ? (
+              <p className="col-span-full text-xs text-muted-foreground">
+                Counts cover the {data.counted} most recent of {data.total}{" "}
+                actions. Open the pending-actions list for the full set.
+              </p>
+            ) : null}
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 };

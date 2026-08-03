@@ -235,6 +235,18 @@ export const ROLE_MODULES: Record<Role, readonly string[]> = {
   [ROLES.ADMINISTRATOR]: [
     "dashboard",
     "admin",
+    /*
+      **FR-ADM-07** — "configure which widgets each role sees" is the
+      Administrator's too, not only the Super User's, and
+      `(protected)/(admin)/dashboards/layout.tsx` already lets them through on
+      the wildcard permission.
+
+      It was missing here, and the sidebar applies *two* filters: the permission
+      check passed on `*`, then `modules.includes(item.module)` dropped the row.
+      So `/dashboards` was reachable by URL and by the Administrator dashboard's
+      own empty-state copy, but had no link anywhere in the shell.
+    */
+    "dashboards",
     "audit",
     "trends",
     "reports",

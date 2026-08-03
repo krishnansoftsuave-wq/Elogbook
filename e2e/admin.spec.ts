@@ -314,8 +314,18 @@ test.describe("Super User boundaries", () => {
       FIRST_PAINT
     );
     await expect(nav.getByRole("link", { name: "Workflows" })).toBeVisible();
-    // ...and nothing operational: they hold no `shift:read`.
-    await expect(nav.getByRole("link", { name: "Dashboard" })).toHaveCount(0);
+    /*
+      ...and nothing operational: they hold no `shift:read`.
+
+      `exact` matters here and did not used to. Playwright's `name` is a
+      case-insensitive *substring* by default, and FR-DASH-02's configuration
+      screen added a **Dashboards** link that a Super User legitimately has — so
+      the loose matcher started counting it and reported an operational nav item
+      that is not there. The assertion is about `/dashboard`, the Operator's home.
+    */
+    await expect(
+      nav.getByRole("link", { name: "Dashboard", exact: true })
+    ).toHaveCount(0);
   });
 
   /**
@@ -586,13 +596,13 @@ test.describe("audit log", () => {
 /* FR-HOME-03 — shift timings                                                  */
 /* -------------------------------------------------------------------------- */
 
-/**
- * The banner shows whichever half of the day is live, so an assertion naming
- * one of them passes for twelve hours and fails for the other twelve. Both
- * orderings of a boundary pair are accepted; what is asserted is the boundary.
- */
-const bannerShowsBoundary = (open: string, close: string) =>
-  new RegExp(`(${open} GST–${close} GST)|(${close} GST–${open} GST)`);
+/*
+  ⚠️ A `bannerShowsBoundary` helper lived here, building a regex for
+  "06:00 GST–18:00 GST" in either order. It is deleted because **no screen
+  prints a shift window any more**: the context banner was matched to the
+  prototype's wording, which is "<date> · <LABEL> Shift". Both tests below say
+  what they lost and what still covers the claim.
+*/
 
 test.describe("shift timings", () => {
   /**
@@ -603,13 +613,52 @@ test.describe("shift timings", () => {
   test("the dashboard banner reads the plant's clock, not UTC", async ({
     page,
   }) => {
-    await openAt(page, "/dashboard");
+    /*
+      As an **Operator**, not the file's default Administrator.
 
-    await expect(
-      page.getByText(bannerShowsBoundary("06:00", "18:00"))
-    ).toBeVisible(FIRST_PAINT);
-    // The values the UTC arithmetic produced, named so a regression is obvious.
-    await expect(page.getByText(/10:00 GST|22:00 GST/)).toHaveCount(0);
+      §6.4 now sends an Administrator who opens `/dashboard` to the system
+      monitor instead, so this used to assert on a screen that no longer carries
+      a shift banner — the failure was "element not found", not a wrong time. The
+      claim is about FR-HOME-03's arithmetic, not about who may read it, so it
+      belongs on the role whose dashboard shows the banner.
+
+      `signIn` + `landOn` rather than `openAt`: that helper waits for
+      `/admin/users`, which is where the admin tree lands and where an Operator
+      never goes.
+    */
+    await signIn(page, OPERATOR);
+    await landOn(page, /\/dashboard$/);
+
+    /*
+      ⚠️ **Asserted on the shift *label*, because the banner no longer prints
+      the times.** It used to read "… 06:00 GST–18:00 GST · 15-minute handover
+      overlap"; the owner asked for the prototype's wording, which is
+      "<date> · <LABEL> Shift" and nothing more.
+
+      The label still proves the same arithmetic. `currentShift()` picks Day or
+      Night by comparing *plant* time to the 06:00 boundary, so the UTC bug this
+      test was written for — six hundred minutes of offset — put the changeover
+      four hours late and would show NIGHT here through the whole of the Omani
+      morning. Computing the expected label from `Asia/Muscat` in the test is
+      what makes that detectable rather than tautological.
+
+      The boundary instants themselves are pinned directly in
+      `src/mocks/shifts/current.test.ts` ("opens the day shift exactly at 06:00
+      plant time", "renders as 06:00–18:00 on a plant-time clock"), so the
+      arithmetic keeps a unit guard as well as this one.
+    */
+    const plantHour = Number(
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Muscat",
+        hour: "2-digit",
+        hour12: false,
+      }).format(new Date())
+    );
+    const expected = plantHour >= 6 && plantHour < 18 ? "DAY" : "NIGHT";
+
+    await expect(page.getByText(new RegExp(`${expected} Shift`))).toBeVisible(
+      FIRST_PAINT
+    );
   });
 
   /**
@@ -636,23 +685,40 @@ test.describe("shift timings", () => {
       FIRST_PAINT
     );
 
-    await page.goto("/dashboard");
-    await expect(
-      page.getByText(bannerShowsBoundary("07:00", "19:00"))
-    ).toBeVisible(FIRST_PAINT);
+    /*
+      ⚠️ **The dashboard leg of this test is gone, and not because it passed.**
 
-    // Put it back.
-    await page.goto("/admin/shift-config");
+      It used to reload `/dashboard` here and assert the banner now read
+      "07:00 GST–19:00 GST" — the proof that a saved timing reaches every
+      screen. The owner asked for the banner's text to match the prototype,
+      which prints "<date> · <LABEL> Shift" and no times at all, so there is no
+      longer anywhere in the UI that shows a shift window.
+
+      What survives is the round trip through the API: reloading the config
+      screen re-reads `GET /admin/shift-config`, so a value that never persisted
+      would come back as 06:00. That is the weaker half of FR-HOME-03's "report/
+      summary generation aligns to them" — the alignment itself is asserted in
+      `src/mocks/shifts/current.test.ts` against the same store.
+    */
+    await page.reload();
+    await expect(page.getByLabel("Day shift start")).toHaveValue(
+      "07:00",
+      FIRST_PAINT
+    );
+    await expect(page.getByText("19:00").first()).toBeVisible();
+
+    // Put it back — this store is process-wide and outlives the test.
     await page.getByLabel("Day shift start").fill("06:00");
     await page.getByRole("button", { name: "Save shift timings" }).click();
     await expect(page.getByText(/Shift timings saved/)).toBeVisible(
       FIRST_PAINT
     );
 
-    await page.goto("/dashboard");
-    await expect(
-      page.getByText(bannerShowsBoundary("06:00", "18:00"))
-    ).toBeVisible(FIRST_PAINT);
+    await page.reload();
+    await expect(page.getByLabel("Day shift start")).toHaveValue(
+      "06:00",
+      FIRST_PAINT
+    );
   });
 
   test("a Super User is bounced from the shift timings", async ({ page }) => {

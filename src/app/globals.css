@@ -53,6 +53,7 @@
   --color-priority-medium: var(--priority-medium);
   --color-brand-dark: var(--brand-dark);
   --color-brand-surface: var(--brand-surface);
+  --color-brand-surface-deep: var(--brand-surface-deep);
   --color-brand-subtle: var(--brand-subtle);
   --color-brand-track: var(--brand-track);
   --color-on-brand: var(--on-brand);
@@ -237,6 +238,15 @@
      the theme is not one. `--on-brand` (white) is its only text colour;
      the pair measures 4.51:1 in light and in dark alike. */
   --brand-surface: oklch(0.5559 0.0953 185.47); /* #0D857B */
+  /* The *deep* brand surface — `C.tealDk` used as a background rather than as
+     text. The prototype's shift-context strip is `background: C.tealDk`
+     (app-source.txt 1125), and neither existing token can serve it:
+     `--brand-surface` is the shallower `C.teal` of the top bar, and
+     `--brand-dark` means "the emphatic teal" for *text*, so it inverts to a
+     bright teal in dark mode — fine behind no one, wrong behind white.
+     Theme-invariant for the same reason `--brand-surface` is, and it carries
+     `--on-brand` at 6.38:1 (the figure recorded at the palette note above). */
+  --brand-surface-deep: oklch(0.4479 0.0757 186.15); /* #0A625B  C.tealDk */
   --brand-dark: oklch(0.4479 0.0757 186.15); /* #0A625B  C.tealDk */
   --brand-subtle: oklch(0.9476 0.0143 180.7); /* #E4F1EE  C.active */
   --brand-track: oklch(0.9289 0.011 182.86); /* #E0EAE8  spinner track */
@@ -333,6 +343,8 @@
   /* Not inverted — see the light-theme note. The brand surface holds its
      colour across themes so the top bar and logo tile stay the product's. */
   --brand-surface: oklch(0.5559 0.0953 185.47); /* #0D857B */
+  /* Also not inverted — it is a brand *surface*, see the light-theme note. */
+  --brand-surface-deep: oklch(0.4479 0.0757 186.15); /* #0A625B  C.tealDk */
   /* Inverted against light: "brand-dark" means "the emphatic teal", and on a
      dark surface the emphatic teal is the brighter one. */
   --brand-dark: oklch(0.749 0.1143 183.49); /* #43C5B5 */

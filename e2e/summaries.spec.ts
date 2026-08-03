@@ -88,7 +88,7 @@ test.describe("operations dashboard", () => {
 
     await landOn(page, /\/dashboard$/);
     await expect(
-      page.getByRole("heading", { name: "Operations dashboard", level: 1 })
+      page.getByRole("heading", { name: "Operations Dashboard", level: 1 })
     ).toBeVisible(FIRST_PAINT);
   });
 
@@ -97,14 +97,15 @@ test.describe("operations dashboard", () => {
    * Served live from `GET /shifts/current`, so the assertion is on the shape of
    * the banner rather than a fixed date the seed would move.
    */
-  test("the shift banner names the shift and its handover overlap", async ({
-    page,
-  }) => {
+  test("the shift banner names the current shift", async ({ page }) => {
     await signIn(page);
     await landOn(page, /\/dashboard$/);
 
-    await expect(page.getByText(/handover overlap/)).toBeVisible(FIRST_PAINT);
-    await expect(page.getByText(/(Day|Night) shift/)).toBeVisible();
+    // The prototype's `"<date> · <LABEL> Shift"` (app-source.txt 1127). The
+    // overlap clause was dropped when the banner's text was matched verbatim —
+    // see the note beside `ShiftContextBanner`.
+    await expect(page.getByText(/(DAY|NIGHT) Shift/)).toBeVisible(FIRST_PAINT);
+    await expect(page.getByText(/handover overlap/)).toHaveCount(0);
   });
 
   /**
@@ -118,12 +119,36 @@ test.describe("operations dashboard", () => {
     await signIn(page);
     await landOn(page, /\/dashboard$/);
 
-    await expect(page.getByText(/Entire plant/)).toBeVisible(FIRST_PAINT);
+    await expect(page.getByText(/Entire Plant — 3 Trains/)).toBeVisible(
+      FIRST_PAINT
+    );
     await expect(page.getByLabel(/Filter by area/)).toHaveCount(0);
   });
 
-  /** FR-HOME-01's "pending actions", as the KPI region. */
-  test("the KPI tiles report counts from the real backend", async ({
+  /**
+   * ⚠️ **FR-HOME-01's four widgets are currently reachable by nobody, and this
+   * test is the evidence.** Left failing deliberately — see below.
+   *
+   * Making the Operator tab match the prototype meant setting
+   * `assigned_roles: []` on WID-001 (Shift KPIs), WID-002 (Current Shift
+   * Highlights), WID-003 (Critical Alarms), WID-004 (Previous Shift Summary),
+   * WID-006 (Safety Observations) and WID-007 (Pending Actions by Status).
+   * That is every operational role.
+   *
+   * The Super User is not a way back in. `useRoleWidgets` hands that role a
+   * fixed list containing WID-001, but `HOME_CANDIDATES` sends a Super User to
+   * `/admin/users` and the guard bounces them off `/dashboard` — asserted two
+   * describes below. So the branch that would render Shift KPIs is unreachable
+   * by route.
+   *
+   * **FR-HOME-01 is a signed requirement** ("current-shift highlights: events,
+   * pending actions, safety observations, repeating issues") and no screen now
+   * satisfies it. That is an owner decision to confirm, not a defect to fix
+   * unilaterally — reassigning the widgets would undo the instruction that
+   * removed them. `test.fixme` keeps it visible in every report instead of
+   * deleting the only thing that says so.
+   */
+  test.fixme("the KPI tiles report counts from the real backend", async ({
     page,
   }) => {
     await signIn(page);
@@ -139,6 +164,8 @@ test.describe("operations dashboard", () => {
    * The chart carries the accessible equivalent `ChartFrame` provides — a real
    * table of the same series. `SCREENS.md` records that the prototype's charts
    * have none, and this is where that gap is closed rather than claimed.
+   *
+   * Asserted on the Safety KPI chart, which is what an Operator actually has.
    */
   test("the status chart has a table equivalent, not just an aria-label", async ({
     page,
@@ -147,41 +174,49 @@ test.describe("operations dashboard", () => {
     await landOn(page, /\/dashboard$/);
 
     await expect(
-      page.getByRole("img", { name: "Pending actions by status" })
+      page.getByRole("img", { name: /^Open safety items by/i })
     ).toBeVisible(FIRST_PAINT);
     await expect(
-      page.getByRole("table", { name: "Pending actions by status" })
+      page.getByRole("table", { name: /^Open safety items by/i })
     ).toBeAttached();
   });
 
   /**
-   * **FR-DASH-04** caps a regular user at hiding, resizing and saving widget
-   * layout; §6.4 gives chart-type switching to the Administrator. The prototype
-   * puts a bar/pie toggle on the operator's dashboard (`app-source.txt` 561) —
-   * the BRD outranks it.
+   * ⚠️ **This assertion is inverted from what it used to require, by owner
+   * decision.**
+   *
+   * It read "no chart-type toggle is offered to a regular user", on the
+   * grounds that **FR-DASH-04** caps a regular user at hiding and resizing and
+   * §6.4 gives chart-type switching to the Administrator — with the note that
+   * the prototype puts a bar/pie toggle on the operator's dashboard
+   * (`app-source.txt` 561) and "the BRD outranks it".
+   *
+   * The owner then instructed that the Operator tab match the prototype
+   * exactly. User instruction outranks the BRD in this repo's precedence order,
+   * so the toggle ships and this test records that it does.
+   *
+   * **The BRD divergence is real and unresolved**: an Operator can now switch
+   * the Safety KPI card between bar and pie, which §6.4 reserves for the
+   * Administrator. It is one prop (`ChartKindToggle` in `DueDateRagCard`) to
+   * put back if the client reads §6.4 strictly at sign-off.
    */
-  test("no chart-type toggle is offered to a regular user", async ({
+  test("the Safety KPI card offers the prototype's bar/pie toggle", async ({
     page,
   }) => {
     await signIn(page);
     await landOn(page, /\/dashboard$/);
-    /*
-      By role, not by text. That label is on the chart *and* on the `<caption>`
-      of its table equivalent, so an unscoped `getByText` is two elements and
-      strict mode refuses it — but only once the data has arrived, which made
-      this a race that passed whenever the assertion won. The chart is what the
-      absent toggle would belong to, so the chart is what to wait for.
-    */
+
     await expect(
-      page.getByRole("img", { name: "Pending actions by status" })
+      page.getByRole("img", { name: /^Open safety items by/i })
     ).toBeVisible(FIRST_PAINT);
 
     await expect(page.getByRole("group", { name: /Chart type/ })).toHaveCount(
-      0
+      1
     );
   });
 
-  test("the dashboard links through to the previous shift summary", async ({
+  /** WID-004 is assigned to no role — the same finding as the KPI test above. */
+  test.fixme("the dashboard links through to the previous shift summary", async ({
     page,
   }) => {
     await signIn(page);
@@ -374,7 +409,16 @@ test.describe("shift summaries", () => {
     await signIn(page, SUPER_USER);
     await landOn(page, /\/admin\/users/);
 
-    await expect(page.getByRole("link", { name: "Dashboard" })).toHaveCount(0);
+    /*
+      `exact`, because FR-DASH-02's configuration screen added a **Dashboards**
+      link a Super User legitimately has, and Playwright's `name` is a
+      case-insensitive substring by default — so the loose matcher counted it and
+      claimed an operational nav item that is not there. This is about
+      `/dashboard`, the Operator's home.
+    */
+    await expect(
+      page.getByRole("link", { name: "Dashboard", exact: true })
+    ).toHaveCount(0);
     await expect(
       page.getByRole("link", { name: "Shift summaries" })
     ).toHaveCount(0);
@@ -393,12 +437,19 @@ test.describe("responsive", () => {
       await page.setViewportSize(breakpoint);
       await signIn(page);
       await landOn(page, /\/dashboard$/);
+      /*
+        The Safety KPI chart is the paint marker, not the Shift KPIs region —
+        the Operator's set is the six plant-ops cards now, so waiting on a
+        widget they no longer have meant the overflow assertion below never
+        ran at all. This one is also the *right* marker for the test: the
+        stacked bar is the widest thing on the screen.
+      */
       await expect(
-        page.getByRole("region", { name: "Shift KPIs" })
+        page.getByRole("img", { name: /^Open safety items by/i })
       ).toBeVisible(FIRST_PAINT);
 
       // Wide content scrolls inside its own container, never the page
-      // (`.claude/rules/01`). The donut is a `viewBox`, not a fixed width.
+      // (`.claude/rules/01`).
       expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     });
 
@@ -448,8 +499,11 @@ test.describe("dark mode", () => {
     await page.evaluate(() => document.documentElement.classList.add("dark"));
 
     await landOn(page, /\/dashboard$/);
+    // The Safety KPI chart, for the same reason the donut was chosen: it draws
+    // from `--chart-*`, which has separate dark values. The donut is no longer
+    // on the Operator's dashboard.
     await expect(
-      page.getByRole("img", { name: "Pending actions by status" })
+      page.getByRole("img", { name: /^Open safety items by/i })
     ).toBeVisible(FIRST_PAINT);
 
     await page.goto("/summaries");

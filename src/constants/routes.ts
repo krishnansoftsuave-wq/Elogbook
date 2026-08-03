@@ -81,6 +81,17 @@ export const ROUTES = {
   TRENDS: "/trends",
   /** §7.9 — in-app notifications. */
   NOTIFICATIONS: "/notifications",
+  /**
+   * §7.12 / FR-DASH-01–03 — the Super User's dashboard configuration.
+   *
+   * Plural, and deliberately not under `/admin`. The prototype gives it its own
+   * top-level nav row (`app-source.txt` 16, module key `dashboards`) rather
+   * than an admin tab, and it is the Super User's screen first — §6.5's whole
+   * role is dashboard and permission management. Nesting it under `/admin`
+   * would have inherited that subtree's `user:read` gate for no reason the
+   * requirement asks for.
+   */
+  DASHBOARDS: "/dashboards",
   LOGBOOK: "/logbook",
   ENTRY_ADD: "/logbook/add",
   ENTRY_EDIT: (id: string) => `/logbook/edit/${id}`,
@@ -230,6 +241,31 @@ export const ROUTE_PERMISSIONS = {
   ADMIN_ROLES: {
     prefix: "/admin/roles",
     permissions: [WILDCARD_PERMISSION],
+  },
+  /**
+   * §7.12 — dashboard configuration. **`dashboard:configure`, not the
+   * wildcard**, and the reasoning is `ADMIN_WORKFLOWS`' rather than
+   * `ADMIN_AUDIT`'s.
+   *
+   * §6.5's Super User bullets name this capability directly — *"configure
+   * dashboards for Operator/Supervisor/Management, assign widgets to roles,
+   * control which metrics each role sees"* — and **FR-DASH-02**, **FR-ADM-06**
+   * and **FR-ADM-07** all repeat it. So the one role a requirement names for
+   * this screen must reach it, which the wildcard would have prevented.
+   * `PUT /dashboards/widgets/:id` already gates on exactly this permission, so
+   * a wider gate here would admit somebody to a screen whose every save 403s.
+   *
+   * **FR-ADM-07 gives it to the Administrator too** (*"Admin and Super User
+   * manage the main dashboard configuration"*), which needs no second entry:
+   * `hasPermission` treats the wildcard as holding everything.
+   *
+   * One permission, not two: unlike `ADMIN_WORKFLOWS` this route does not sit
+   * under `/admin`, so there is no ancestor `user:read` guard to record. The
+   * effective requirement really is just this.
+   */
+  DASHBOARDS: {
+    prefix: "/dashboards",
+    permissions: ["dashboard:configure"],
   },
   /**
    * §7.6. `action:read` is held by Operator, Supervisor and Management, and
